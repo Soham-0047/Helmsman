@@ -1,0 +1,10 @@
+# Helmsman agent runtime — FastAPI + httpx, no LangChain/LlamaIndex (forbidden).
+# Orchestration is custom and explicit (app/pipeline.py); models are called
+# directly over httpx (app/model_router.py).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic==2.10.4
+asyncpg==0.30.0          # pgvector access (live mode); optional at runtime
+numpy==2.2.1             # cosine sim + local embedding fallback
+python-dotenv==1.0.1
