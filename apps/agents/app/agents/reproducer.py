@@ -60,8 +60,12 @@ def fallback(ctx: PipelineCtx) -> ReproducerOutput:
         runtime = f"python {m.group(1)}"
     os_m = _OS_RE.search(body)
     pkg = ""
+    runtime_ver = runtime.split()[-1] if " " in runtime else ""
     for v in _VER_RE.findall(body):
-        if v.lower().lstrip("v") not in (runtime.split()[-1] if " " in runtime else ""):
+        # Skip the version that belongs to the runtime itself; the next distinct
+        # version is taken to be the package version. Compare by equality, not
+        # substring, so a "2" version isn't swallowed by a "node 20" runtime.
+        if v.lower().lstrip("v") != runtime_ver:
             pkg = v
             break
 

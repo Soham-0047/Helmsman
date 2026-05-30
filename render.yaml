@@ -1,0 +1,50 @@
+# Render Blueprint — creates the Helmsman gateway + agents services in one shot.
+# Use via Render dashboard → New + → Blueprint → point at the PUBLIC repo URL
+# (no GitHub account connection needed). The web app deploys separately on Vercel
+# (see docs/deployment.md). After the web app is live, set WEB_URL on the gateway
+# to its Vercel URL and redeploy (Step 4 in the docs) so CORS allows the browser.
+services:
+  # ---- FastAPI agent runtime ------------------------------------------------
+  - type: web
+    name: helmsman-agents
+    runtime: python
+    plan: free
+    rootDir: apps/agents
+    buildCommand: pip install -r requirements.txt
+    # Render injects $PORT; uvicorn binds to it directly.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: HELMSMAN_MODE
+        value: demo
+      - key: ADMIN_LOCAL_FALLBACK
+        value: "true"
+
+  # ---- Express API gateway --------------------------------------------------
+  - type: web
+    name: helmsman-gateway
+    runtime: node
+    plan: free
+    rootDir: apps/gateway
+    buildCommand: npm install
+    # Gateway reads GATEWAY_PORT; bridge Render's $PORT into it.
+    startCommand: GATEWAY_PORT=$PORT npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: HELMSMAN_MODE
+        value: demo
+      - key: ADMIN_LOCAL_FALLBACK
+        value: "true"
+      - key: UIPATH_LOCAL_SIMULATOR
+        value: "true"
+      # Render prompts for this at blueprint creation — paste the full
+      # https://helmsman-agents.onrender.com URL (with scheme, no trailing slash).
+      - key: AGENTS_URL
+        sync: false
+      # Overwrite with your Vercel URL after the web deploy (Step 4).
+      - key: WEB_URL
+        value: http://localhost:3000

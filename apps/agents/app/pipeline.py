@@ -17,6 +17,7 @@ Maestro Case stage, and fans them out over SSE.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import AsyncIterator
 
@@ -125,6 +126,15 @@ async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
 
     is_duplicate = bool(ctx.retriever and ctx.retriever.likely_duplicate_of)
 
+    # The Prioritizer only depends on classification + retriever (both already
+    # available), so it runs CONCURRENTLY with the Reproducer -> Source Analyzer
+    # chain rather than after it. The Reproducer and Source Analyzer remain a
+    # sequential chain because the Source Analyzer reads the Reproducer's
+    # actual_behavior. We start the Prioritizer task now so its model call
+    # overlaps the bug-investigation chain, then await it at the end.
+    prioritizer_task = asyncio.create_task(prioritizer.run(ctx))
+    yield _ev(case_id, type="agent_start", agent="prioritizer", stage="Investigation")
+
     # Bug-only agents
     if category == "bug" and not is_duplicate:
         yield _ev(case_id, type="agent_start", agent="reproducer", stage="Investigation")
@@ -143,9 +153,8 @@ async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
         yield _ev(case_id, type="agent_skipped", agent="reproducer", stage="Investigation", message=reason)
         yield _ev(case_id, type="agent_skipped", agent="source_analyzer", stage="Investigation", message=reason)
 
-    # Prioritizer (all non-spam)
-    yield _ev(case_id, type="agent_start", agent="prioritizer", stage="Investigation")
-    prun = await prioritizer.run(ctx)
+    # Prioritizer (all non-spam) — awaited here; it ran alongside the chain above.
+    prun = await prioritizer_task
     yield _complete_ev(case_id, "prioritizer", prun)
 
     # ---- Drafting -------------------------------------------------------

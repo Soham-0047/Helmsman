@@ -89,6 +89,13 @@ async def run(ctx: PipelineCtx) -> AgentRun:
     out: RetrieverOutput = run.output  # type: ignore[assignment]
     dup, conf, top_cos = _dup_decision(ctx)
     out.top_cosine = round(top_cos, 3)
+    # Reject a model-proposed duplicate that is not actually one of the retrieved
+    # candidates (the re-ranker can hallucinate an issue number that was never
+    # surfaced by vector search). Only real candidates may be flagged.
+    candidate_numbers = {c.issue_number for c in ctx.candidates}
+    if out.likely_duplicate_of is not None and out.likely_duplicate_of not in candidate_numbers:
+        out.likely_duplicate_of = None
+        out.duplicate_confidence = 0.0
     # Enforce the earlier-only hard gate regardless of what the model returned
     # (the model may propose a duplicate of a LATER issue, which we reject).
     if out.likely_duplicate_of is not None and out.likely_duplicate_of >= ctx.issue.number:
