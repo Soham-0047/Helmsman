@@ -1,0 +1,76 @@
+{
+  "$schema": "https://cloud.uipath.com/schemas/agent-builder/v1.json",
+  "description": "UiPath Agent Builder definitions for the seven Helmsman agents. Each agent's prompt is NOT inlined — it is fetched by key from the Admin Service control plane at run time, so prompts version independently of the agent definition. Models are Qwen variants via Alibaba Cloud Model Studio (OpenAI-compatible), routed through the Admin Service smart router.",
+  "modelProvider": {
+    "type": "openai-compatible",
+    "routedBy": "admin-service:/public/providers/route?kind=llm",
+    "fallbackChain": ["qwen-cloud", "openrouter-free", "groq", "ollama-local", "deterministic-fallback"]
+  },
+  "agents": [
+    {
+      "id": "classifier", "displayName": "1 · Classifier",
+      "promptKey": "helmsman.classifier.v1", "model": "qwen3-8b", "thinking": false,
+      "stage": "Classification",
+      "inputs": ["repo_full_name", "issue_number", "issue_title", "issue_body", "existing_labels"],
+      "outputSchema": "ClassifierOutput",
+      "fallback": "needs_info @ confidence 0 (case still advances to a human)"
+    },
+    {
+      "id": "retriever", "displayName": "2 · Context Retriever",
+      "promptKey": "helmsman.retriever.rerank.v1", "model": "qwen3-8b", "thinking": false,
+      "stage": "Investigation",
+      "tools": [{ "type": "vector_search", "binding": "supabase.match_issue_embeddings", "embeddingModel": "BAAI/bge-small-en-v1.5", "topK": 5 }],
+      "inputs": ["issue_number", "issue_title", "issue_body", "candidates_block"],
+      "outputSchema": "RetrieverOutput",
+      "fallback": "raw cosine order; duplicate only on earlier-issue outlier gate"
+    },
+    {
+      "id": "reproducer", "displayName": "3 · Reproducer",
+      "promptKey": "helmsman.reproducer.v1", "model": "qwen2.5-coder-7b", "thinking": false,
+      "stage": "Investigation", "runsWhen": "classification == 'bug'",
+      "inputs": ["issue_number", "issue_title", "issue_body", "code_blocks"],
+      "outputSchema": "ReproducerOutput",
+      "fallback": "regex-extracted env/steps with per-field confidence"
+    },
+    {
+      "id": "source_analyzer", "displayName": "4 · Source Analyzer",
+      "promptKey": "helmsman.source_analyzer.v1", "model": "qwen3-long-context", "thinking": false,
+      "stage": "Investigation", "runsWhen": "classification == 'bug' && flag('helmsman.use_long_context_analyzer')",
+      "tools": [
+        { "type": "github_api", "call": "GET /repos/{owner}/{repo}/git/trees/{sha}?recursive=1" },
+        { "type": "github_api", "call": "GET /repos/{owner}/{repo}/contents/{path}" }
+      ],
+      "fileSelection": "deterministic path/filename relevance heuristic → top 3 → one long-context call",
+      "inputs": ["repo_full_name", "commit_sha", "bug_summary", "files_block"],
+      "outputSchema": "SourceAnalyzerOutput",
+      "fallback": "highest-overlap file + line range"
+    },
+    {
+      "id": "voice_profiler", "displayName": "5 · Voice Profiler",
+      "promptKey": "helmsman.voice_profiler.v1", "model": "qwen3-32b", "thinking": true,
+      "stage": "Drafting", "runsWhen": "on repo connect; refreshed after each approved response (cached per-issue)",
+      "tools": [{ "type": "github_api", "call": "GET /repos/{owner}/{repo}/issues/comments (last 100, maintainer)" }],
+      "inputs": ["maintainer_login", "comments_block"],
+      "outputSchema": "VoiceProfile",
+      "fallback": "empirical statistics computed from the comment samples"
+    },
+    {
+      "id": "responder", "displayName": "6 · Responder",
+      "promptKey": "helmsman.responder.v2", "model": "qwen3-32b", "thinking": true,
+      "stage": "Drafting",
+      "selfCheck": { "promptKey": "helmsman.responder.selfcheck.v1", "gatedBy": "flag('helmsman.voice_self_check')" },
+      "inputs": ["voice_profile", "classification", "issue_*", "retriever_summary", "reproducer_summary", "source_summary", "priority_summary"],
+      "outputSchema": "ResponderOutput",
+      "fallback": "voice-matched template assembled from upstream findings"
+    },
+    {
+      "id": "prioritizer", "displayName": "7 · Prioritizer",
+      "promptKey": "helmsman.prioritizer.v1", "model": "qwen3-8b", "thinking": false,
+      "stage": "Investigation",
+      "rubric": { "severity_keywords": 0.30, "known_contributor": 0.20, "reactions": 0.15, "age": 0.15, "security_or_dependency": 0.20 },
+      "inputs": ["issue_*", "classification", "reporter_is_contributor", "reaction_count", "age_hours", "has_security_signal"],
+      "outputSchema": "PrioritizerOutput",
+      "fallback": "deterministic rubric computation (weights are fixed)"
+    }
+  ]
+}

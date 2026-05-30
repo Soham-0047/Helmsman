@@ -1,0 +1,20 @@
+{
+  "_comment": "Recent comments by the demo maintainer @dana-maintains, newest first. Agent 5 (Voice Profiler) reads these to build repos.voice_profile. In live mode this comes from GET /repos/{owner}/{repo}/issues/comments. The golden_response fields in fixtures.json are written in this same voice so voice-similarity scoring is meaningful.",
+  "maintainer_login": "dana-maintains",
+  "comments": [
+    "Thanks for the detailed repro — that's exactly what I needed. The off-by-one is in `src/lexer.ts` around the header scan; I'll get a guard in for the next patch.",
+    "Good catch. We're re-adding the listener on every reconnect without tearing down the old one. Fix is a teardown on `close`. Appreciate you debugging it this far.",
+    "Reasonable ask. The config loader already abstracts the parse step, so this would be a clean addition behind an optional peer dep. PR welcome if you'd like to take it.",
+    "Yep, that's a bug — we construct the Date at UTC midnight and then format in local time. We should keep date-only fields UTC throughout. Thanks for pinning down the timezone.",
+    "Happy to help, but I'll need the actual error and the version. A minimal input that reproduces it would go a long way.",
+    "Right now it's buffer-based so it loads the whole file. For large inputs use `createParseStream()` — the docs are thin on it and I'll expand that section.",
+    "Agreed this is a security bug and it's top of my list. We should redact any auth/token/key header before it hits the logger. I'll ship a patch and add a regression test.",
+    "Welcome, and thank you! `CONTRIBUTING.md` covers setup. Issues tagged `good first issue` are the best place to start — ping me on one and I'll help you get going.",
+    "That's a Windows encoding issue — the bytes are UTF-8 for the accented character, so something is double-encoding. I don't have a Windows box handy, so a tested patch would help.",
+    "I'd keep this optional so we don't add weight for the common case. Otherwise the approach looks right to me.",
+    "Closing as a duplicate of the linked issue — let's track the fix there. Thanks for reporting, and subscribe to that one for updates.",
+    "Nice minimal repro. You're right that the eviction is deferred to a microtask while the read is synchronous, so there's a window. I'll look this week.",
+    "Merged, thank you! I tweaked the test name and added one more case for the empty-input path. Nice first contribution.",
+    "Let me reproduce before I commit to a cause — I don't want to guess at the fix. I'll report back with what I find."
+  ]
+}

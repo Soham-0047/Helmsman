@@ -1,0 +1,68 @@
+{
+  "$schema": "https://cloud.uipath.com/schemas/maestro/case-definition/v1.json",
+  "key": "helmsman-issue-case",
+  "displayName": "Helmsman — GitHub Issue Triage Case",
+  "description": "Agentic case management for a single GitHub issue. Seven Qwen agents advance the case through governed stages; the maintainer is the decision-maker at the Pending Approval gate; UiPath RPA executes the approved action on GitHub.",
+  "version": "1.0.0",
+  "track": "UiPath Maestro Case",
+  "schema": {
+    "fields": [
+      { "name": "caseId", "type": "string", "required": true, "description": "Maestro Case instance id" },
+      { "name": "repoFullName", "type": "string", "required": true, "validation": "^[\\w.-]+/[\\w.-]+$" },
+      { "name": "githubIssueNumber", "type": "integer", "required": true, "min": 1 },
+      { "name": "classification", "type": "enum", "values": ["bug", "feature", "question", "duplicate", "spam", "needs_info"], "required": false },
+      { "name": "priorityScore", "type": "integer", "min": 1, "max": 10, "required": false },
+      { "name": "pipelineOutputs", "type": "json", "required": false, "description": "Per-agent typed outputs" },
+      { "name": "draftResponse", "type": "string", "required": false },
+      { "name": "approvedAction", "type": "json", "required": false, "description": "{ type, params } consumed by the RPA executor" },
+      { "name": "approver", "type": "string", "required": false },
+      { "name": "auditRef", "type": "string", "required": false, "description": "audit_log correlation id" }
+    ]
+  },
+  "stages": [
+    { "id": "Intake", "type": "start", "description": "Webhook received; case created with issue payload.", "onEnter": ["persist_case"] },
+    { "id": "Classification", "agent": "classifier", "description": "Classifier agent routes the issue.", "sla": { "timeoutSeconds": 30 } },
+    { "id": "Investigation", "agents": ["retriever", "reproducer", "source_analyzer", "prioritizer"], "description": "Retrieval + (bug-only) reproduction & source analysis + prioritization.", "sla": { "timeoutSeconds": 120 } },
+    { "id": "Drafting", "agents": ["voice_profiler", "responder"], "description": "Voice fingerprint loaded; Responder drafts the reply (+ self-check).", "sla": { "timeoutSeconds": 90 } },
+    { "id": "Pending Approval", "type": "human", "description": "HUMAN GATE. Maintainer approves / edits / rejects. Nothing posts to GitHub until this clears.", "actor": "maintainer", "uiBinding": "/apps/web/app/case/[id]/page.tsx" },
+    { "id": "Approved", "type": "transition", "description": "Maintainer approved; approvedAction recorded.", "onEnter": ["notify_email"] },
+    { "id": "Executed", "type": "end", "description": "UiPath RPA executed the action on GitHub; audit finalized.", "onEnter": ["rpa_execute", "finalize_audit"] }
+  ],
+  "transitions": [
+    { "from": "Intake", "to": "Classification", "on": "case_created" },
+    { "from": "Classification", "to": "Investigation", "on": "classifier_complete", "guard": "classification != 'spam'" },
+    { "from": "Classification", "to": "Pending Approval", "on": "classifier_complete", "guard": "classification == 'spam'", "note": "spam skips the pipeline and goes straight to maintainer dismissal" },
+    { "from": "Investigation", "to": "Drafting", "on": "investigation_complete" },
+    { "from": "Drafting", "to": "Pending Approval", "on": "responder_complete" },
+    { "from": "Pending Approval", "to": "Approved", "on": "maintainer_approve" },
+    { "from": "Pending Approval", "to": "Executed", "on": "maintainer_reject", "note": "reject closes the case with no GitHub action" },
+    { "from": "Approved", "to": "Executed", "on": "rpa_complete" }
+  ],
+  "branches": {
+    "byClassification": {
+      "bug": ["retriever", "reproducer", "source_analyzer", "prioritizer"],
+      "feature": ["retriever", "prioritizer"],
+      "question": ["retriever", "prioritizer"],
+      "duplicate": ["retriever", "prioritizer"],
+      "needs_info": ["retriever", "prioritizer"],
+      "spam": []
+    }
+  },
+  "exceptions": [
+    { "trigger": "agent_timeout", "handler": "use_agent_fallback", "description": "Agent exceeds SLA → deterministic local fallback output; case still advances so a human always sees it." },
+    { "trigger": "malformed_agent_output", "handler": "use_agent_fallback", "description": "Non-parseable model output → schema-validated fallback." },
+    { "trigger": "github_rate_limit", "handler": "retry_with_backoff", "maxRetries": 3, "description": "Secondary-rate-limit aware exponential backoff in the RPA executor." },
+    { "trigger": "uipath_unavailable", "handler": "local_simulator", "description": "If Orchestrator is unreachable, the gateway's local Maestro simulator advances the identical state machine and reconciles on reconnect." },
+    { "trigger": "duplicate_detected", "handler": "route_close_as_duplicate", "description": "Retriever flags likely_duplicate_of → recommended action becomes close_as_duplicate_of (still requires approval)." }
+  ],
+  "components": {
+    "agentBuilder": ["classifier", "retriever", "reproducer", "source_analyzer", "voice_profiler", "responder", "prioritizer"],
+    "maestro": ["case lifecycle", "stage transitions", "human approval task"],
+    "apiWorkflows": ["approval_bridge", "pipeline_advance"],
+    "rpa": ["post_comment", "apply_labels", "close_issue", "close_as_duplicate_of", "request_more_info"]
+  },
+  "audit": {
+    "store": "Supabase audit_log (append-only)",
+    "captures": ["every stage transition", "every agent model_call (input/output/model/provider/latency)", "the human decision", "the RPA execution result"]
+  }
+}

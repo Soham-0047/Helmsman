@@ -1,0 +1,27 @@
+{
+  "$schema": "https://cloud.uipath.com/schemas/api-workflow/v1.json",
+  "key": "helmsman-pipeline-advance",
+  "displayName": "Pipeline Advance (API Workflow)",
+  "description": "Streams the seven-agent pipeline from the FastAPI runtime and advances the Maestro Case one stage per agent-group completion, persisting each agent's typed output and fanning events to the dashboard over SSE.",
+  "trigger": { "type": "internal", "boundTo": "apps/gateway/src/pipeline.ts → runPipelineForCase()" },
+  "steps": [
+    { "id": "open_stream", "action": "http.stream", "args": { "method": "POST", "url": "{{AGENTS_URL}}/pipeline/run", "body": "{{pipelineRequest}}", "format": "ndjson" } },
+    { "id": "on_stage", "on": "event.type == 'stage'", "actions": [
+      { "action": "maestro.transition", "args": { "toStage": "{{event.stage}}" } },
+      { "action": "store.updateCase", "args": { "current_stage": "{{event.stage}}" } },
+      { "action": "sse.publish", "args": { "caseId": "{{caseId}}", "event": "{{event}}" } }
+    ]},
+    { "id": "on_agent_complete", "on": "event.type == 'agent_complete'", "actions": [
+      { "action": "store.mergePipelineOutput", "args": { "agent": "{{event.agent}}", "output": "{{event.output}}" } },
+      { "action": "audit.append", "args": { "actor_type": "agent", "actor_name": "{{event.agent}}", "action": "model_call", "input": { "model": "{{event.model}}", "provider": "{{event.provider}}" }, "output": "{{event.output}}" } },
+      { "action": "sse.publish", "args": { "caseId": "{{caseId}}", "event": "{{event}}" } }
+    ]},
+    { "id": "on_complete", "on": "event.type == 'pipeline_complete'", "actions": [
+      { "action": "store.updateCase", "args": { "classification": "{{event.output.classification}}", "priority_score": "{{event.output.priority_score}}", "draft_response": "{{event.output.draft_response}}" } }
+    ]}
+  ],
+  "exceptions": [
+    { "on": "agent_timeout || malformed_output", "action": "continue_with_fallback" },
+    { "on": "runtime_unreachable", "action": "audit_and_halt", "note": "case stays at last good stage; retried on next event" }
+  ]
+}

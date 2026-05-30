@@ -1,0 +1,39 @@
+{
+  "_comment": "Synthetic source tree for the demo repo helmsman-demo/fastlane-parser. In live mode the gateway fetches the real file tree + contents from the GitHub API (GET /repos/.../git/trees + /contents). Here we ship a small tree so Agent 4 (Source Analyzer) has real files to reason over offline. File contents intentionally contain the buggy lines referenced by the fixtures.",
+  "repo_full_name": "helmsman-demo/fastlane-parser",
+  "head_sha": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "files": [
+    {
+      "path": "src/lexer.ts",
+      "content": "// Tokenizer for the .lane format. Reads a header then a body.\nimport { ParseError } from './errors';\n\nconst MAGIC = 'lane';\n\nexport function scanHeader(buf: Buffer): { version: number; offset: number } {\n  // Read the magic bytes. NOTE: we index buf[0] without checking for a\n  // leading control byte, so a file that starts with \\0 walks past the magic.\n  let offset = 0;\n  while (buf[offset] === 0x20) offset++; // skip leading spaces\n  const magic = buf.toString('ascii', offset, offset + MAGIC.length);\n  if (magic !== MAGIC) {\n    // BUG: when the first byte is \\0 we never reach here in some builds; the\n    // native addon dereferences buf[offset + MAGIC.length] past the end.\n    throw new ParseError(`bad magic at ${offset}`);\n  }\n  const version = buf[offset + MAGIC.length + 1] - 0x30;\n  return { version, offset: offset + MAGIC.length + 2 };\n}\n\nexport function parse(buf: Buffer) {\n  const { version, offset } = scanHeader(buf);\n  return { version, body: buf.subarray(offset) };\n}\n"
+    },
+    {
+      "path": "src/watcher.ts",
+      "content": "import { EventEmitter } from 'events';\nimport WebSocket from 'ws';\n\nexport class Watcher extends EventEmitter {\n  private ws?: WebSocket;\n  constructor(private url: string, private autoReconnect = true) { super(); }\n\n  start() {\n    this.ws = new WebSocket(this.url);\n    // BUG: a new 'data' listener is added on every reconnect but the previous\n    // socket's listeners are never removed -> RSS grows on each reconnect.\n    this.ws.on('message', (d) => this.emit('data', d));\n    this.ws.on('close', () => { if (this.autoReconnect) this.start(); });\n  }\n\n  stop() { this.ws?.close(); }\n}\n"
+    },
+    {
+      "path": "src/cache.ts",
+      "content": "export class Cache<V> {\n  private map = new Map<string, V>();\n  set(k: string, v: V) { this.map.set(k, v); }\n  get(k: string) { return this.map.get(k); }\n  invalidate(k: string) {\n    // BUG: eviction is deferred to a microtask while get() reads synchronously,\n    // so get(k) right after invalidate(k) can still return the old value.\n    queueMicrotask(() => this.map.delete(k));\n  }\n}\n"
+    },
+    {
+      "path": "src/date.ts",
+      "content": "export function parseDateField(s: string): Date {\n  // BUG: `new Date('2026-03-10')` is parsed as UTC midnight, then callers\n  // format it in local time -> the date shifts a day in negative-offset zones.\n  return new Date(s);\n}\n"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "#!/usr/bin/env node\nimport { readFileSync } from 'fs';\nimport { parse } from './lexer';\n\nconst file = process.argv[2];\n// BUG: always buffers the whole file; for >500MB inputs this blocks the event\n// loop and the CLI appears to hang. Should switch to the streaming parser.\nconst buf = readFileSync(file);\nconst result = parse(buf);\nprocess.stdout.write(JSON.stringify(result));\n"
+    },
+    {
+      "path": "src/net.ts",
+      "content": "import createDebug from 'debug';\nconst debug = createDebug('fastlane:net');\n\nexport async function loadRemote(url: string, token?: string) {\n  const headers: Record<string,string> = {};\n  if (token) headers['Authorization'] = `Bearer ${token}`;\n  // BUG (security): logs the full headers including Authorization in plaintext.\n  debug('request %s headers=%o', url, headers);\n  const r = await fetch(url, { headers });\n  if (!r.ok) throw new Error(`remote ${r.status}`);\n  return r.text();\n}\n"
+    },
+    {
+      "path": "src/resolve.ts",
+      "content": "import { existsSync } from 'fs';\nexport function resolve(name: string): string {\n  // BUG: on Windows, non-ASCII filenames are passed with the wrong encoding\n  // to the fs layer, yielding ENOENT for files like 'caf\\u00e9.lane'.\n  if (!existsSync(name)) throw new Error(`ENOENT: ${name}`);\n  return name;\n}\n"
+    },
+    {
+      "path": "src/config.ts",
+      "content": "import { readFileSync } from 'fs';\nexport function loadConfig(path: string) {\n  const raw = readFileSync(path, 'utf8');\n  // Only JSON is supported today; the parse step is abstracted so a YAML\n  // branch could be added behind an optional peer dependency.\n  return JSON.parse(raw);\n}\n"
+    }
+  ]
+}

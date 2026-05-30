@@ -1,0 +1,25 @@
+{
+  "$schema": "https://cloud.uipath.com/schemas/api-workflow/v1.json",
+  "key": "helmsman-approval-bridge",
+  "displayName": "Approval Bridge (API Workflow)",
+  "description": "Turns a maintainer click in the Helmsman dashboard into a Maestro Case state transition + RPA job. This is the plumbing behind the human-in-the-loop gate.",
+  "trigger": {
+    "type": "http",
+    "method": "POST",
+    "path": "/api/cases/:id/approve",
+    "auth": "bearer",
+    "boundTo": "apps/gateway/src/routes/cases.ts → service.approveCase()"
+  },
+  "steps": [
+    { "id": "load_case", "action": "maestro.getCase", "args": { "caseId": "{{params.id.uipath_case_id}}" } },
+    { "id": "record_edit", "action": "store.updateCase", "when": "{{body.editedDraft}}", "args": { "draft_response": "{{body.editedDraft}}" } },
+    { "id": "transition_approved", "action": "maestro.transition", "args": { "toStage": "Approved" } },
+    { "id": "audit_approve", "action": "audit.append", "args": { "actor_type": "human", "actor_name": "{{actor}}", "action": "approve", "input": "{{approvedAction}}" } },
+    { "id": "resolve_dry_run", "action": "admin.isFlagEnabled", "args": { "key": "helmsman.rpa_dry_run" } },
+    { "id": "rpa_execute", "action": "rpa.run", "args": { "process": "helmsman-github-actions", "action": "{{approvedAction}}", "dryRun": "{{steps.resolve_dry_run.result}}" } },
+    { "id": "audit_rpa", "action": "audit.append", "args": { "actor_type": "system", "actor_name": "uipath-rpa", "action": "rpa_execute", "output": "{{steps.rpa_execute.result}}" } },
+    { "id": "transition_executed", "action": "maestro.transition", "args": { "toStage": "Executed" } },
+    { "id": "notify", "action": "email.send", "provider": "resend", "args": { "template": "approved", "to": "{{maintainer.email}}" } }
+  ],
+  "returns": { "case": "{{case}}", "action": "{{approvedAction}}", "rpa": "{{steps.rpa_execute.result}}" }
+}

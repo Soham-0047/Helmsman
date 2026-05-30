@@ -1,0 +1,31 @@
+{
+  "_comment": "Helmsman feature flags. `npm run seed:prompts` also pushes these to the Admin Service (POST /admin/flags). The SDK falls back to these defs for local evaluation when the Admin Service is unreachable. Strategies match the Admin Service: on | off | percent | allowlist | condition.",
+  "flags": [
+    {
+      "key": "helmsman.auto_close_duplicates",
+      "strategy": "off",
+      "description": "When ON, a case the Context Retriever flags as a duplicate with >=0.92 similarity is auto-routed to close_as_duplicate_of (still requires human approval unless combined with a trusted-repo allowlist). Default OFF — duplicates are suggested, never auto-actioned."
+    },
+    {
+      "key": "helmsman.use_long_context_analyzer",
+      "strategy": "on",
+      "description": "When ON, bug cases run Agent 4 (Source Analyzer) on qwen3-long-context with all three candidate files loaded. When OFF, the Source Analyzer is skipped to save tokens; the Responder works from the Reproducer output alone."
+    },
+    {
+      "key": "helmsman.voice_self_check",
+      "strategy": "on",
+      "description": "When ON, the Responder runs a self-check pass (helmsman.responder.selfcheck.v1) scoring its own draft against the voice fingerprint and returning a revised draft. When OFF, the first draft is used as-is."
+    },
+    {
+      "key": "helmsman.rpa_dry_run",
+      "strategy": "on",
+      "description": "When ON, the UiPath RPA executor logs the GitHub action it WOULD take but does not call the GitHub API (safe for demos). When OFF, approved actions are executed for real. Default ON until a real GitHub OAuth token is connected."
+    },
+    {
+      "key": "helmsman.canary_new_responder",
+      "strategy": "percent",
+      "percent": 0,
+      "description": "Canary for a future Responder variant. percent rollout is deterministic by repo/maintainer id. Left at 0% — example of the percent strategy."
+    }
+  ]
+}

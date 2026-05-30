@@ -1,0 +1,42 @@
+{
+  "$schema": "https://cloud.uipath.com/schemas/rpa-process/v1.json",
+  "key": "helmsman-github-actions",
+  "displayName": "GitHub Actions (RPA Process)",
+  "description": "The coded-automation process UiPath RPA runs on approval. It reads the approvedAction from the Maestro Case and executes EXACTLY ONE action against the GitHub REST API. This is what makes Helmsman an RPA solution, not just an LLM wrapper. Implemented at apps/gateway/src/github/actions.ts. Honors the helmsman.rpa_dry_run flag (logs instead of calling GitHub).",
+  "auth": { "type": "github_oauth_token", "storage": "AES-256-GCM at rest (apps/gateway/src/lib/crypto.ts)" },
+  "rateLimit": { "strategy": "exponential_backoff", "maxRetries": 3, "respectsSecondaryLimits": true },
+  "actions": [
+    {
+      "id": "post_comment",
+      "description": "Post the approved draft as a comment.",
+      "requests": [{ "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/comments", "body": { "body": "{{draft}}" } }]
+    },
+    {
+      "id": "apply_labels",
+      "description": "Apply suggested labels.",
+      "requests": [{ "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/labels", "body": { "labels": "{{labels}}" } }]
+    },
+    {
+      "id": "close_issue",
+      "description": "Close the issue with a reason.",
+      "requests": [{ "method": "PATCH", "path": "/repos/{owner}/{repo}/issues/{number}", "body": { "state": "closed", "state_reason": "{{reason}}" } }]
+    },
+    {
+      "id": "close_as_duplicate_of",
+      "description": "Comment + label duplicate + close.",
+      "requests": [
+        { "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/comments", "body": { "body": "{{draft}}" } },
+        { "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/labels", "body": { "labels": ["duplicate"] } },
+        { "method": "PATCH", "path": "/repos/{owner}/{repo}/issues/{number}", "body": { "state": "closed", "state_reason": "not_planned" } }
+      ]
+    },
+    {
+      "id": "request_more_info",
+      "description": "Comment + apply needs-more-info label.",
+      "requests": [
+        { "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/comments", "body": { "body": "{{draft}}" } },
+        { "method": "POST", "path": "/repos/{owner}/{repo}/issues/{number}/labels", "body": { "labels": ["needs-more-info"] } }
+      ]
+    }
+  ]
+}
