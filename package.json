@@ -1,0 +1,35 @@
+{
+  "name": "helmsman",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Helmsman — an AI co-pilot for open-source maintainers. Seven-agent Qwen triage pipeline, human-in-the-loop approval, UiPath Maestro Case orchestration, on a self-built Admin Service control plane.",
+  "license": "MIT",
+  "author": "Soham Roy <soham.roy@neenopal.com>",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/web",
+    "apps/gateway"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "check:env": "node scripts/check-env.mjs",
+    "dev": "concurrently -n web,gateway,agents -c magenta,cyan,green \"npm:dev:web\" \"npm:dev:gateway\" \"npm:dev:agents\"",
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:gateway": "npm --workspace apps/gateway run dev",
+    "dev:agents": "node scripts/run-agents.mjs",
+    "build": "npm --workspace apps/gateway run build && npm --workspace apps/web run build",
+    "demo": "node scripts/demo.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "seed:prompts": "node scripts/seed-prompts.mjs",
+    "seed:fixtures": "node scripts/seed-fixtures.mjs",
+    "db:schema": "node scripts/apply-schema.mjs",
+    "agents:install": "node scripts/install-agents.mjs",
+    "lint": "npm --workspace apps/web run lint --if-present && npm --workspace apps/gateway run lint --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "dotenv": "^16.4.7"
+  }
+}

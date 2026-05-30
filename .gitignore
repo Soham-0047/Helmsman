@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.Python
+*.egg-info/
+
+# Builds
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+*.pem
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+pids/
+*.pid
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / coverage
+coverage/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime / local data
+.helmsman/
+db/data/
+tmp/
+
+# Benchmark scratch (results.json IS committed — see benchmarks/)
+benchmarks/.cache/

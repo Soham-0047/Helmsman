@@ -1,0 +1,37 @@
+# Local "live" stack — a one-command stand-in for Supabase + Upstash so you can
+# develop against real Postgres/pgvector without a cloud account.
+#   docker compose up -d
+#   DATABASE_URL=postgresql://helmsman:helmsman@localhost:5432/helmsman npm run db:schema
+#
+# The OFFLINE DEMO does NOT need this — `npm run demo` runs against the
+# in-memory vector store. Bring this up only when you want true pgvector.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: helmsman-postgres
+    environment:
+      POSTGRES_USER: helmsman
+      POSTGRES_PASSWORD: helmsman
+      POSTGRES_DB: helmsman
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helmsman -d helmsman"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: helmsman-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

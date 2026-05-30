@@ -1,0 +1,532 @@
+# Admin Service
+
+A standalone control plane for **AI/API providers, prompts, feature flags, site config, and curated resources**. Run it once, point every project at it. Built for full-stack agentic apps where you need to swap models, rotate keys, ship prompt revisions, and toggle features *without redeploying* any consumer service.
+
+| Part | Stack | Default port |
+|---|---|---|
+| `backend/` | Express + Mongoose + TS | **4001** |
+| `frontend/` | Next.js 15 + Tailwind | **3001** |
+| `sdk/` | Single TS file, zero deps | n/a — copy into consumer |
+
+---
+
+## What's inside
+
+| Feature | What it gives you |
+|---|---|
+| **Providers** | 23+ pre-defined AI/API providers (LLM/vision/audio/parsing/search/music/embeddings/…). Add new ones with **one entry in a TS file**; the UI auto-renders the form. Test API keys before saving with a live probe (auto-fires as you type). Includes local + remote Ollama. |
+| **Smart router** | `GET /public/providers/route?kind=llm` → ordered fallback chain (healthy → unknown → degraded → priority). SDK has `withFailover()` that walks the chain automatically. |
+| **Prompts** | Versioned prompts pulled by key. Flip active variant for instant rollouts/rollbacks. Variables auto-extracted from `${var}` placeholders. |
+| **Feature flags** | `on` / `off` / `percent` (deterministic-by-userId) / `allowlist` / `condition` strategies. Server-eval or local-eval via SDK. |
+| **Audit log** | Append-only history of every config change with before/after diffs. |
+| **Overview dashboard** | One-glance health: provider status, avg latency, recent activity, drill-downs. |
+| **Render keep-alive** | Self-ping + DB-free `/warmup` endpoint to avoid the free-tier cold-start tax. |
+| **Mobile-first UI** | Full-screen modals on phones, scrollable nav, touch-sized hit targets, skeleton loaders, toast notifications. |
+| **Encrypted vault** | All secrets AES-256-GCM at rest. Rotating `SECRET_KEY` invalidates everything (intended kill-switch). |
+| **TS SDK** | Drop one file into your consumer app. Cached, retried, with stale-while-revalidate + failover wrapper. |
+
+---
+
+## Quick start
+
+```bash
+git clone <this repo> && cd admin-service
+npm install
+(cd backend  && npm install && cp .env.example .env)
+(cd frontend && npm install && cp .env.local.example .env.local)
+
+# fill in backend/.env (see "Configure")
+mongod --dbpath ~/data/db   # or use MongoDB Atlas
+
+npm run dev   # runs backend (4001) + frontend (3001) concurrently
+```
+
+Open **http://localhost:3001** → sign in with an email on `ADMIN_EMAILS` (Google or password).
+
+---
+
+## Prerequisites
+
+- **Node.js 20+** (`nvm use 20`)
+- **MongoDB** — local or [Atlas free tier](https://www.mongodb.com/cloud/atlas/register). Use a separate database from any consumer app.
+- *(Optional)* **A Google Cloud OAuth client** — for Google sign-in. Skip if you only want password login.
+
+---
+
+## Configure
+
+### `backend/.env`
+
+```dotenv
+PORT=4001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3001
+BACKEND_PUBLIC_URL=http://localhost:4001
+
+MONGODB_URI=mongodb://localhost:27017/admin_service
+
+# AES-256-GCM key source for the secret vault (≥16 chars).
+# ⚠ Changing this invalidates all stored credentials/secrets.
+SECRET_KEY=<long random>
+
+# Browser session JWT
+SESSION_SECRET=<long random>
+SESSION_HOURS=168
+
+# Password login (always enabled)
+ADMIN_PASSWORD=<password ≥8 chars>
+ADMIN_EMAILS=you@example.com,teammate@example.com
+
+# Google OAuth (optional — set both to "disabled" to disable)
+GOOGLE_CLIENT_ID=<from Google Cloud>
+GOOGLE_CLIENT_SECRET=<from Google Cloud>
+
+# Bearer token consumer apps use to hit /public/*
+SERVICE_TOKEN=<long random>
+
+# Optional: disable Render-style self-ping when not on free tier
+# KEEP_ALIVE=0
+```
+
+Generate random strings:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### `frontend/.env.local`
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:4001
+```
+
+---
+
+## Using the admin panel
+
+Sign in, then use the tabs across the top.
+
+### Overview
+Live counts (providers / healthy / prompts / flags), avg latency, the most recent audit events, and quick links into every section. The "X providers down" banner highlights routing problems.
+
+### Multi-key / multi-account fallback (e.g. several Gemini keys)
+
+The platform is built around **N keys per provider**. Add the same provider twice (or 10×) with different labels — each row is one API key. The fallback chain tries them in priority order before falling back to a different provider.
+
+**Two failover modes** in the SDK:
+
+```ts
+// Cross-provider failover (default): try all your Gemini keys, then all
+// your OpenAI keys, then all your Anthropic keys — across the whole kind.
+await admin.withFailover("llm", async (p) => callUpstream(p));
+
+// Per-provider failover: try every Gemini key (Personal Gmail, Work, etc.)
+// in sequence. Throws if all of YOUR Gemini accounts fail. Does NOT fall
+// back to OpenAI. Use this when you specifically want Gemini.
+await admin.withProviderFailover("google", async (p) => callUpstream(p));
+```
+
+**Setup**: open the **Providers** tab → tap the **Google AI (Gemini)** catalog card → fill the form, name it `Personal Gmail`, give it priority `100`, pick a free-tier model from the dropdown (it shows quotas inline). Save. Then on the *Google AI* group header in the *Configured instances* section, tap **+ Add key** → name this one `Work Gmail`, priority `110`. Repeat for each account.
+
+The **⚡ Preview chain** button at the top shows the exact order the router will try — by `kind=llm` (cross-provider) or by `providerId=google` (just your Gemini keys).
+
+### Free-tier model picker
+
+When a provider has a known model catalog in [`backend/src/registry/providers.ts`](backend/src/registry/providers.ts), the form replaces the plain text input with a **searchable picker** showing:
+- Model id (exact slug used in API calls)
+- **green "free" badge** for free-tier models
+- Quota / notes ("free: 15 RPM, 500 RPD — most generous", etc.)
+
+Curated free-tier picks bundled (May 2026):
+
+| Provider | Best free model(s) |
+|---|---|
+| **Google AI** | `gemini-3.1-flash-lite` (15 RPM / 500 RPD), `gemma-4-26b` & `gemma-4-31b` (15 RPM, 1.5K RPD, unlimited TPM) |
+| **Groq** | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant` (~600 tok/s), `deepseek-r1-distill-llama-70b` |
+| **OpenRouter** | `meta-llama/llama-3.3-70b-instruct:free`, `qwen/qwen-2.5-72b-instruct:free`, `deepseek/deepseek-chat:free` |
+| **Cerebras** | `llama3.1-8b`, `llama-3.3-70b` |
+| **Together AI** | `meta-llama/Llama-3.3-70B-Instruct-Turbo-Free` |
+| **Mistral** | `mistral-small-latest`, `open-mistral-7b`, `open-mixtral-8x7b` |
+| **HuggingFace** | `meta-llama/Llama-3.3-70B-Instruct`, `Qwen/Qwen2.5-72B-Instruct` (throttled) |
+| **Ollama** (local) | `llama3.3`, `qwen2.5-coder`, `deepseek-r1`, `gemma3` |
+
+Adding a new model: append to the provider's `models: [...]` array in `providers.ts`. It appears in the picker automatically.
+
+### Providers — the main event
+1. **Catalog**: 23+ pre-defined providers (LLM/Vision/Audio/Parsing/Search/Music/Image/Embedding/Email). Tap any card.
+2. **Auto-rendered form**: Fields come straight from the registry — no UI code per provider.
+3. **Live test as you type**: A debounced probe fires ~700ms after the last keystroke; you see `✓ ok (842ms, 200)` (green) or `✗ failed` (red) with the raw error before you even click Save. Manual *Test now* button too.
+4. **Save**: One click. Instance appears in *Configured instances* with a status dot.
+5. **Test/Edit/Enable/Disable/Delete** on each row. *Test* runs the same probe against the saved instance.
+6. **Bulk import** with a JSON blob. **Sync** auto-seeds anything tagged `autoSeed` (Ollama by default).
+
+#### Adding a new provider (no UI changes)
+
+Edit [`backend/src/registry/providers.ts`](backend/src/registry/providers.ts) and append an entry:
+
+```ts
+{
+  id: "deepgram",
+  displayName: "Deepgram (STT)",
+  category: "Audio",
+  kind: "stt",
+  iconColor: "#13ef93",
+  baseURL: "https://api.deepgram.com/v1",
+  auth: "apiKey",
+  authHeader: "Authorization",
+  docsUrl: "https://console.deepgram.com/",
+  fields: [
+    { name: "apiKey", label: "API key", type: "password", secret: true, required: true,
+      help: "Sent as 'Authorization: Token <key>'" },
+  ],
+  probe: { method: "GET", path: "/projects", timeoutMs: 6000 },
+  tags: ["audio", "stt"],
+},
+```
+
+Restart backend. The new card appears in *Catalog*, the test probe is live, and the encryption/storage/router/SDK all work without further changes.
+
+**Field types supported**: `text`, `password` (encrypted), `url`, `number`, `select` (with `options`), `textarea`. Mark `secret: true` to encrypt; `required: true` to enforce; `default` for prefills; `help` for inline guidance.
+
+**Probe template variables**: any field name can be referenced as `${name}` inside `probe.path`, `probe.headers`, or `probe.body`. Example: `path: "/models/${model}:generateContent"`.
+
+### Prompts
+Versioned. Each prompt has a `key` (e.g. `agent.system.researcher`), a description, tags, and one or more variants. Click a prompt to see all variants — only one is active at a time. Add a new variant → it activates automatically. *Activate* on any older variant to roll back instantly. Variables (`${task}`, `${userName}`, etc.) are auto-extracted from the content.
+
+### Feature flags
+Pick a strategy:
+- **on / off**: hard switches.
+- **percent**: rolls out to N% of users. Deterministic by `ctx.userId` (hashed → same user always lands the same way).
+- **allowlist**: comma-separated userIds/emails.
+- **condition**: a small JSON predicate against consumer-supplied context. Examples:
+  - `{"plan": "pro"}` → `ctx.plan === "pro"`
+  - `{"plan": {"$in": ["pro", "team"]}}` → in list
+
+Consumer apps either pull the raw defs (and eval locally — zero per-call network cost) or call `/public/flags/evaluate` with their context.
+
+### Audit log
+Every create/update/delete by any admin lands here with actor, action, target, and before/after diffs. Tap any row to expand. Filter by action/actor/target via the search box.
+
+### Credentials, Site config, Strings, Resources
+Existing simpler stores — see the sub-pages.
+
+---
+
+## Wiring a consumer app
+
+### Option A — drop in the SDK (recommended)
+
+Copy [`sdk/admin-client.ts`](sdk/admin-client.ts) into your consumer project:
+
+```ts
+import { createAdminClient } from "./admin-client";
+
+const admin = createAdminClient({
+  baseURL: process.env.ADMIN_URL!,         // e.g. https://admin-w1i8.onrender.com
+  serviceToken: process.env.SERVICE_TOKEN!,
+  ttlMs: 60_000,
+});
+
+// --- Prompts ---
+const systemPrompt = await admin.renderPrompt("agent.system.researcher", {
+  userName: "Soham",
+  task: "Summarize this PDF",
+});
+
+// --- Feature flags (local eval after first fetch) ---
+if (await admin.isFlagEnabled("feature.new_chat_ui", { userId, plan: "pro" })) {
+  // ship the new UI
+}
+
+// --- Smart provider routing with auto-failover ---
+const answer = await admin.withFailover("llm", async (provider) => {
+  const r = await fetch(`${provider.baseURL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(provider.auth === "bearer" && provider.values.apiKey
+        ? { Authorization: `Bearer ${provider.values.apiKey}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      model: provider.values.model || "gpt-4o-mini",
+      messages: [{ role: "user", content: "hello" }],
+    }),
+  });
+  if (!r.ok) throw new Error(`${provider.providerId} → ${r.status}`);
+  return (await r.json()).choices[0].message.content;
+});
+// withFailover walks the chain (primary → fallback → fallback…) on each failure,
+// and reports success/failure to the admin dashboard so the status dots stay accurate.
+```
+
+### Option B — call the endpoints directly
+
+| Endpoint | What |
+|---|---|
+| `GET /public/providers?kind=llm` | All instances of a kind, ordered by priority. |
+| `GET /public/providers/route?kind=llm` | Ordered fallback chain (healthy first). `primary` is `chain[0]`. |
+| `GET /public/providers?id=openai` | Just OpenAI instances. |
+| `POST /public/providers/:id/report` | `{ ok, latencyMs, reason }` — feeds back into the admin health dashboard. |
+| `GET /public/prompts` | All prompts, active variants only. |
+| `GET /public/prompts/:key` | One prompt by key. |
+| `GET /public/prompts?tag=agent` | Filter by tag. |
+| `GET /public/flags` | All flag definitions (consumer evals locally). |
+| `POST /public/flags/evaluate` | `{ ctx: {...} }` → `{ flags: { key: boolean } }` (server eval). |
+| `GET /public/credentials?service=…` | Legacy simple credentials. |
+| `GET /public/config` | Site config singleton. |
+| `GET /public/resources` | Learning resources catalog. |
+
+All require `Authorization: Bearer <SERVICE_TOKEN>`.
+
+---
+
+## Production deployment
+
+Recommended split: **Vercel** (frontend) + **Render** (backend) + **MongoDB Atlas** (storage).
+
+### 1. MongoDB Atlas
+Create a free M0 cluster. Add `0.0.0.0/0` to the IP allowlist (or Render's egress range if you're on a paid plan). Grab the connection string.
+
+### 2. Backend on Render
+- New *Web Service*, point at the repo, root dir `backend/`.
+- Build: `npm install && npm run build`
+- Start: `npm start`
+- Env vars: everything from `backend/.env`. Set `NODE_ENV=production`. Set `FRONTEND_URL` to your Vercel URL and `BACKEND_PUBLIC_URL` to your Render URL.
+
+### 3. Frontend on Vercel
+- Import the repo, root dir `frontend/`.
+- Env: `NEXT_PUBLIC_API_URL=https://<your-backend>.onrender.com`.
+
+### 4. Google OAuth (cross-site quirk)
+Because Vercel and Render are on different domains, browsers block the OAuth cookie on the subsequent `/auth/me` fetch (third-party-cookie policy). The backend handles this by passing the JWT through the redirect's URL fragment (`#token=...`); the frontend grabs it, stores it in `localStorage`, and uses it as a Bearer token. **You don't need to do anything** — it just works.
+
+Add your Vercel URL to the Google OAuth client as an **Authorized JavaScript origin** *and* add `https://<backend>.onrender.com/auth/google/callback` as an **Authorized redirect URI**.
+
+### 5. Render free-tier cold starts
+The backend exposes `GET /warmup` (DB-free, ~50ms warm) and a self-pinger that hits it every 10 minutes when `NODE_ENV=production`. The frontend also fires a warmup in parallel with auth on every page load, so the dyno wakes up before any real request. Set `KEEP_ALIVE=0` to disable the self-pinger if you upgrade off the free tier.
+
+---
+
+## Architecture
+
+```
+                                                      ┌───────────────────────────────┐
+                                                      │  MongoDB                      │
+                                                      │  ─ Provider  (encrypted)      │
+                                                      │  ─ Prompt    (versioned)      │
+                                                      │  ─ FeatureFlag                │
+                                                      │  ─ AuditLog                   │
+                                                      │  ─ ApiCredential, SiteConfig, │
+                                                      │    Resource                   │
+                                                      └──────────────┬────────────────┘
+                                                                     │
+┌─────────────────────────┐   cookie / Bearer     ┌──────────────────┴──────────────────┐
+│ admin-service/frontend  │  session, OAuth +    │  admin-service/backend                │
+│ Next.js — admin UI      ├──── #token fragment ►│  Express                              │
+└─────────────────────────┘                      │  ─ /auth/*    Google OAuth + password │
+                                                 │  ─ /admin/*   cookie/Bearer gated     │
+                                                 │  ─ /public/*  service-token gated     │
+                                                 │  ─ /warmup    DB-free wakeup          │
+                                                 │  ─ keep-alive self-pinger (prod)      │
+                                                 └────────────┬──────────────────────────┘
+                                                              │ Bearer SERVICE_TOKEN
+                  ┌───────────────────────────────────────────┼────────────────────────────┐
+                  ▼                                           ▼                            ▼
+            consumer A (SDK)                          consumer B (SDK)              consumer C (raw fetch)
+            ─ caches 60s                              ─ caches 60s                  ─ /public/* directly
+            ─ stale-while-revalidate                  ─ withFailover()
+            ─ reports back outcomes
+```
+
+### Two auth modes on the same backend
+
+- **Browser session** — Google OAuth or `ADMIN_PASSWORD` + email allowlist → CRUD endpoints under `/admin/*` and `/auth/*`. JWT in httpOnly cookie (same-site) or Bearer (cross-site).
+- **Service token** — `Authorization: Bearer <SERVICE_TOKEN>` → read-only `/public/*` for consumer apps.
+
+`/public/providers`, `/public/prompts`, `/public/flags` are the only paths that ever return decrypted secrets or full config — and they require the service token.
+
+---
+
+## Endpoints reference
+
+### Auth
+```
+POST /auth/google/start                      redirect to Google
+GET  /auth/google/callback                   OAuth callback → sets cookie, redirects with #token
+POST /auth/password-login                    { email, password } → { token }
+GET  /auth/me                                current admin (no-store)
+POST /auth/logout
+```
+
+### Admin (cookie/Bearer-gated)
+```
+# Overview
+GET  /admin/overview                         dashboard payload (one round-trip)
+
+# Providers (the new platform)
+GET  /admin/providers/registry               registry catalog (UI form schema)
+GET  /admin/providers                        instances
+POST /admin/providers                        create instance
+PATCH /admin/providers/:id                   update / rotate secrets
+POST /admin/providers/probe                  test {providerId, values} WITHOUT saving
+POST /admin/providers/:id/test               test saved instance
+POST /admin/providers/sync                   auto-seed autoSeed providers
+POST /admin/providers/import                 bulk JSON
+GET  /admin/providers/export                 sanitized JSON
+GET  /admin/providers/health                 fleet snapshot
+DELETE /admin/providers/:id
+
+# Prompts
+GET    /admin/prompts                        list (all variants)
+GET    /admin/prompts/:key                   one
+POST   /admin/prompts                        create with v1
+POST   /admin/prompts/:key/variants          add variant (activate by default)
+POST   /admin/prompts/:key/activate/:version switch active
+PATCH  /admin/prompts/:key                   meta only (description/tags)
+DELETE /admin/prompts/:key
+
+# Feature flags
+GET    /admin/flags
+POST   /admin/flags
+PATCH  /admin/flags/:key
+DELETE /admin/flags/:key
+
+# Audit
+GET    /admin/audit?limit=200&q=…            recent entries
+
+# Legacy
+GET/POST/PATCH/DELETE /admin/credentials...
+GET/PATCH /admin/config
+GET/POST/DELETE /admin/resources
+```
+
+### Public (service-token-gated, consumer apps)
+```
+# Providers
+GET  /public/providers?kind=llm                 instances by kind
+GET  /public/providers?id=openai                instances by provider
+GET  /public/providers/route?kind=llm           smart router: { primary, chain }
+POST /public/providers/:id/report               { ok, latencyMs, reason }
+
+# Prompts
+GET  /public/prompts                            all (active variants)
+GET  /public/prompts/:key                       one (active variant)
+GET  /public/prompts?tag=agent                  by tag
+
+# Flags
+GET  /public/flags                              raw defs (local eval)
+POST /public/flags/evaluate                     { ctx } → { flags: {key: bool} }
+
+# Legacy
+GET  /public/credentials?service=…
+GET  /public/config
+GET  /public/resources
+```
+
+### System
+```
+GET /health     liveness (touches Mongo)
+GET /warmup     liveness (no DB) — used by frontend warmup ping + keep-alive
+```
+
+---
+
+## Security model
+
+- **Admin auth**: Google OAuth (preferred) **or** password (always available as fallback). Both gated by an email allowlist (`ADMIN_EMAILS`). JWT signed with `SESSION_SECRET`.
+- **Cross-site OAuth**: Vercel + Render is cross-site → the cookie alone fails third-party-cookie checks. We hand the JWT through the redirect URL fragment, scrub it client-side, and use Bearer auth from `localStorage`. See `OAuth (cross-site quirk)` above.
+- **Secret at rest**: All secret fields encrypted AES-256-GCM with key derived from `SECRET_KEY`. Rotating `SECRET_KEY` is the intended kill-switch — old secrets become undecryptable and are skipped (with a warning log) rather than crashing.
+- **Service token**: 16+ char shared secret, constant-time compared in middleware.
+- **Audit log**: every config-changing admin route writes an audit entry via fire-and-forget. Never blocks the request.
+- **Rate limiting**: 240 req/min/IP global, sane defaults via `express-rate-limit`.
+- **Helmet** sane defaults, **CORS** locked to `FRONTEND_URL`.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `redirect_uri_mismatch` on Google sign-in | Authorized redirect URI must equal `<BACKEND_PUBLIC_URL>/auth/google/callback`. |
+| Sign-in succeeds but UI bounces to /login | (Pre-deploy bug — fixed.) Confirm `/auth/me` returns `authenticated: true` with the bearer token, and that the frontend is on the latest commit. |
+| Cookie won't delete on sign-out | Same — fix is shipped. `clearCookie` now matches the original cookie attributes. |
+| Provider test always fails with weird HTML | ngrok-free intercepts the first request. Ollama provider sends `ngrok-skip-browser-warning: 1` automatically; for other ngrok-fronted endpoints, add the header in your consumer code. |
+| `MongoServerSelectionError` | MongoDB isn't running, or `MONGODB_URI` is wrong / Atlas IP allowlist blocks Render. |
+| Existing credentials decode as gibberish | `SECRET_KEY` changed since they were stored. Restore the previous value, or delete + re-add. |
+| Cold start takes 30s on Render free | Expected. `/warmup` + self-ping minimize it; consumer apps using the SDK get retried automatically. |
+| Consumer's flag eval differs from admin UI | Make sure you pass `ctx.userId` (or `ctx.email`) when calling `isFlagEnabled`. `percent` is deterministic by userId only when userId is present. |
+
+---
+
+## Common ops
+
+```bash
+# Generate any secret
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Backup
+mongodump --uri="$MONGODB_URI" --out=./backups/$(date +%Y%m%d)
+
+# Restore
+mongorestore --uri="$MONGODB_URI" ./backups/20260524
+
+# Rotate SECRET_KEY (manual — destructive)
+# 1) Note that ALL stored secrets become undecryptable.
+# 2) Export plaintext from a still-running instance (use the admin UI's per-instance Test
+#    or have the consumer that pulled them re-supply them).
+# 3) Change SECRET_KEY, restart.
+# 4) Re-enter every secret via the UI.
+```
+
+---
+
+## Local Ollama (it's pre-wired)
+
+The registry ships Ollama with `autoSeed: true`. On first load click **Sync registry** (or **+ Enable Ollama** when no Ollama instance exists). For remote Ollama behind an auth proxy (e.g. ngrok + bearer):
+
+```
+Base URL:  https://your-tunnel.ngrok-free.dev
+API key:   Bearer-checked value the proxy expects (blank = no auth)
+```
+
+The probe automatically sends `ngrok-skip-browser-warning: 1` so it bypasses the ngrok-free interstitial.
+
+---
+
+## File layout
+
+```
+admin-service/
+├── README.md                        ← you are here
+├── package.json                     ← root scripts (npm run dev / build / start)
+├── backend/
+│   └── src/
+│       ├── index.ts                 entry; mounts routes, warmup, keep-alive
+│       ├── config/
+│       │   ├── env.ts               zod-validated env
+│       │   └── db.ts                mongoose connect
+│       ├── auth/                    google.ts, session.ts (JWT)
+│       ├── middleware/              auth.ts (requireAdmin, requireServiceToken)
+│       ├── models/                  Provider, Prompt, FeatureFlag, AuditLog, ApiCredential, Resource, SiteConfig
+│       ├── registry/
+│       │   └── providers.ts         ← SOURCE OF TRUTH for every provider
+│       ├── services/                providerProbe, providerRouter, keepAlive, audit
+│       ├── routes/
+│       │   ├── auth.ts              /auth/*
+│       │   ├── admin/               /admin/* (cookie/Bearer)
+│       │   └── public/              /public/* (service token)
+│       └── utils/                   crypto.ts (AES-256-GCM), logger.ts
+├── frontend/
+│   └── src/
+│       ├── app/                     /, /providers, /prompts, /flags, /audit, /credentials, /site, /strings, /resources, /login
+│       ├── components/              TopBar.tsx
+│       └── lib/                     api.ts, session.tsx, toast.tsx
+└── sdk/
+    └── admin-client.ts              ← copy this into your consumer apps
+```
+
+---
+
+## License
+
+Use it however you want. No warranty, but built with the intent of being someone else's actual control plane.
