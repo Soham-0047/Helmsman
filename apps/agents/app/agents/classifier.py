@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 
+from ..config import settings
+from ..metrics import metrics
 from ..schemas import ClassifierOutput
 from ..util import count_hits, SEVERITY_KEYWORDS, SPAM_KEYWORDS
 from .base import AgentRun, run_llm_agent
@@ -18,6 +20,7 @@ from .context import PipelineCtx
 
 PROMPT_KEY = "helmsman.classifier.v1"
 MODEL = "qwen3-8b"
+ESCALATION_MODEL = "qwen3-32b"  # reasoning model for low-confidence second opinions
 
 _FEATURE = ("add ", "support ", "feature request", "would be great", "would be nice",
             "could we", "could you add", "please add", "enhancement", "feature:", "ability to")
@@ -90,4 +93,32 @@ async def run(ctx: PipelineCtx) -> AgentRun:
         max_tokens=400,
     )
     ctx.classification = run.output  # type: ignore[assignment]
+
+    # Confidence-gated escalation: classification drives the whole pipeline, so a
+    # low-confidence label is the most expensive place to be wrong. When the small
+    # model is genuinely unsure, get a second opinion from the reasoning model
+    # (thinking mode) and keep whichever is more confident. Fires only with a real
+    # model present (offline the first call falls back and escalation is skipped).
+    cls: ClassifierOutput = run.output  # type: ignore[assignment]
+    if (
+        not run.fell_back
+        and ctx.flag("helmsman.classifier_escalation", True)
+        and cls.confidence < settings.classifier_escalation_threshold
+    ):
+        metrics.incr("classifier.escalation")
+        run2 = await run_llm_agent(
+            prompt_key=PROMPT_KEY,
+            model_slug=ESCALATION_MODEL,
+            variables=variables,
+            output_cls=ClassifierOutput,
+            fallback=lambda: cls,
+            thinking=True,
+            max_tokens=500,
+        )
+        cand: ClassifierOutput = run2.output  # type: ignore[assignment]
+        if not run2.fell_back and cand.confidence > cls.confidence:
+            metrics.incr("classifier.escalation_changed")
+            ctx.classification = cand
+            return run2
+
     return run

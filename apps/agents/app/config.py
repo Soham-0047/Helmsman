@@ -68,6 +68,13 @@ class Settings:
     ollama_base_url: str = field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", ""))
     allow_paid: bool = field(default_factory=lambda: _b("HELMSMAN_ALLOW_PAID", False))
 
+    # Router resilience / efficiency
+    llm_max_attempts: int = field(default_factory=lambda: int(os.getenv("HELMSMAN_LLM_MAX_ATTEMPTS", "3")))
+    llm_max_concurrency: int = field(default_factory=lambda: int(os.getenv("HELMSMAN_LLM_MAX_CONCURRENCY", "8")))
+    llm_backoff_base_ms: int = field(default_factory=lambda: int(os.getenv("HELMSMAN_LLM_BACKOFF_BASE_MS", "250")))
+    llm_backoff_max_ms: int = field(default_factory=lambda: int(os.getenv("HELMSMAN_LLM_BACKOFF_MAX_MS", "8000")))
+    embed_cache_size: int = field(default_factory=lambda: int(os.getenv("HELMSMAN_EMBED_CACHE_SIZE", "4096")))
+
     # Embeddings
     embeddings_api_url: str = field(default_factory=lambda: os.getenv("EMBEDDINGS_API_URL", ""))
     embeddings_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDINGS_API_KEY", ""))
@@ -124,6 +131,27 @@ class Settings:
     @property
     def dup_local_gap(self) -> float:
         return float(os.getenv("HELMSMAN_DUP_LOCAL_GAP", "0.18"))
+
+    # Hybrid retrieval (offline / in-memory store): fuse dense cosine with sparse
+    # TF-IDF lexical similarity. The dup gate then runs on the fused score with a
+    # precision-first floor (calibrated so paraphrase duplicates pass while the
+    # top non-duplicate stays below it — no false positives on the fixture set).
+    @property
+    def hybrid_vector_weight(self) -> float:
+        return float(os.getenv("HELMSMAN_HYBRID_VECTOR_WEIGHT", "0.5"))
+
+    @property
+    def classifier_escalation_threshold(self) -> float:
+        """Below this classifier confidence, get a reasoning-model second opinion."""
+        return float(os.getenv("HELMSMAN_CLASSIFIER_ESCALATION_THRESHOLD", "0.6"))
+
+    @property
+    def dup_hybrid_floor(self) -> float:
+        return float(os.getenv("HELMSMAN_DUP_HYBRID_FLOOR", "0.40"))
+
+    @property
+    def dup_hybrid_gap(self) -> float:
+        return float(os.getenv("HELMSMAN_DUP_HYBRID_GAP", "0.05"))
 
 
 settings = Settings()

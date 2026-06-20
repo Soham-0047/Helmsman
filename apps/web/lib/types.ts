@@ -20,6 +20,9 @@ export const PIPELINE_NODES = [
 ] as const;
 export type NodeKey = (typeof PIPELINE_NODES)[number]["key"];
 
+// Visual state of a pipeline node in the stepper / flow.
+export type NodeState = "idle" | "active" | "complete" | "loaded" | "skipped" | "error";
+
 export interface CaseRecord {
   id: string;
   repo_id: string;

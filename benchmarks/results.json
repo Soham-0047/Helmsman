@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-29T20:20:27.310727+00:00",
+  "generated_at": "2026-05-30T10:52:56.173781+00:00",
   "n_issues": 50,
   "mode": "local-fallback (deterministic)",
   "runtime_providers": [
@@ -8,25 +8,25 @@
   "metrics": {
     "classification_accuracy": {
       "baseline": 0.7,
-      "pipeline": 0.78
+      "pipeline": 0.8
     },
     "response_quality_1to5": {
       "baseline": 1,
-      "pipeline": 3.68
+      "pipeline": 3.66
     },
     "voice_similarity_cosine": {
       "baseline": 0.2589,
-      "pipeline": 0.3832
+      "pipeline": 0.385
     },
     "avg_ms_per_issue": {
-      "baseline": 0,
-      "pipeline": 4.9
+      "baseline": 0.0,
+      "pipeline": 1.9
     }
   },
   "deltas": {
-    "classification_accuracy_pp": 8.0,
-    "quality_abs": 2.68,
-    "voice_sim_abs": 0.1243
+    "classification_accuracy_pp": 10.0,
+    "quality_abs": 2.66,
+    "voice_sim_abs": 0.1261
   },
   "per_issue": [
     {
@@ -41,7 +41,7 @@
       "baseline_voice": 0.3977,
       "pipeline_voice": 0.5831,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 9
     },
     {
       "number": 102,
@@ -55,7 +55,7 @@
       "baseline_voice": 0.3592,
       "pipeline_voice": 0.5183,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 103,
@@ -69,7 +69,7 @@
       "baseline_voice": 0.2898,
       "pipeline_voice": 0.4562,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 104,
@@ -83,7 +83,7 @@
       "baseline_voice": 0.3235,
       "pipeline_voice": 0.4095,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 105,
@@ -97,7 +97,7 @@
       "baseline_voice": 0.3408,
       "pipeline_voice": 0.7486,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 106,
@@ -111,7 +111,7 @@
       "baseline_voice": null,
       "pipeline_voice": null,
       "baseline_ms": 0,
-      "pipeline_ms": 4
+      "pipeline_ms": 0
     },
     {
       "number": 107,
@@ -125,7 +125,7 @@
       "baseline_voice": 0.3453,
       "pipeline_voice": 0.7809,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 108,
@@ -139,7 +139,7 @@
       "baseline_voice": 0.3463,
       "pipeline_voice": 0.4621,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 109,
@@ -153,7 +153,7 @@
       "baseline_voice": 0.2719,
       "pipeline_voice": 0.5474,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 110,
@@ -167,7 +167,7 @@
       "baseline_voice": 0.3009,
       "pipeline_voice": 0.3368,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 111,
@@ -181,7 +181,7 @@
       "baseline_voice": 0.2673,
       "pipeline_voice": 0.3492,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 112,
@@ -195,7 +195,7 @@
       "baseline_voice": 0.3377,
       "pipeline_voice": 0.4559,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 113,
@@ -209,7 +209,7 @@
       "baseline_voice": 0.2435,
       "pipeline_voice": 0.413,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 114,
@@ -223,7 +223,7 @@
       "baseline_voice": 0.4178,
       "pipeline_voice": 0.4133,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 115,
@@ -237,7 +237,7 @@
       "baseline_voice": 0.3417,
       "pipeline_voice": 0.3201,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 116,
@@ -251,7 +251,7 @@
       "baseline_voice": 0.3372,
       "pipeline_voice": 0.4365,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 117,
@@ -265,7 +265,7 @@
       "baseline_voice": 0.2118,
       "pipeline_voice": 0.3981,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 118,
@@ -279,7 +279,7 @@
       "baseline_voice": 0.2546,
       "pipeline_voice": 0.3769,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 119,
@@ -293,7 +293,7 @@
       "baseline_voice": 0.3137,
       "pipeline_voice": 0.5106,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 120,
@@ -307,7 +307,7 @@
       "baseline_voice": 0.3816,
       "pipeline_voice": 0.5035,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 201,
@@ -321,7 +321,7 @@
       "baseline_voice": 0.2339,
       "pipeline_voice": 0.3015,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 202,
@@ -335,7 +335,7 @@
       "baseline_voice": 0.1064,
       "pipeline_voice": 0.5665,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 203,
@@ -349,7 +349,7 @@
       "baseline_voice": 0.2248,
       "pipeline_voice": 0.2626,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 204,
@@ -363,7 +363,7 @@
       "baseline_voice": 0.3393,
       "pipeline_voice": 0.4745,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 205,
@@ -377,7 +377,7 @@
       "baseline_voice": null,
       "pipeline_voice": null,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 206,
@@ -391,7 +391,7 @@
       "baseline_voice": 0.2112,
       "pipeline_voice": 0.3982,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 207,
@@ -405,21 +405,21 @@
       "baseline_voice": 0.2135,
       "pipeline_voice": 0.4218,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 208,
       "expected": "duplicate",
       "baseline_class": "bug",
-      "pipeline_class": "bug",
+      "pipeline_class": "duplicate",
       "baseline_correct": false,
-      "pipeline_correct": false,
+      "pipeline_correct": true,
       "baseline_quality": 1,
-      "pipeline_quality": 4,
+      "pipeline_quality": 3,
       "baseline_voice": 0.2176,
-      "pipeline_voice": 0.298,
+      "pipeline_voice": 0.3807,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 209,
@@ -433,7 +433,7 @@
       "baseline_voice": 0.3979,
       "pipeline_voice": 0.3466,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 210,
@@ -447,7 +447,7 @@
       "baseline_voice": 0.3214,
       "pipeline_voice": 0.2184,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 211,
@@ -461,7 +461,7 @@
       "baseline_voice": 0.153,
       "pipeline_voice": 0.145,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 212,
@@ -475,7 +475,7 @@
       "baseline_voice": 0.234,
       "pipeline_voice": 0.4213,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 213,
@@ -489,7 +489,7 @@
       "baseline_voice": 0.1387,
       "pipeline_voice": 0.2477,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 214,
@@ -503,7 +503,7 @@
       "baseline_voice": 0.1806,
       "pipeline_voice": 0.1809,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 215,
@@ -517,7 +517,7 @@
       "baseline_voice": 0.2342,
       "pipeline_voice": 0.2371,
       "baseline_ms": 0,
-      "pipeline_ms": 4
+      "pipeline_ms": 2
     },
     {
       "number": 216,
@@ -531,7 +531,7 @@
       "baseline_voice": 0.2624,
       "pipeline_voice": 0.3302,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 217,
@@ -545,7 +545,7 @@
       "baseline_voice": 0.2338,
       "pipeline_voice": 0.3542,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 218,
@@ -559,7 +559,7 @@
       "baseline_voice": 0.1129,
       "pipeline_voice": 0.178,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 219,
@@ -573,7 +573,7 @@
       "baseline_voice": 0.2402,
       "pipeline_voice": 0.3909,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 220,
@@ -587,7 +587,7 @@
       "baseline_voice": 0.186,
       "pipeline_voice": 0.283,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 221,
@@ -601,7 +601,7 @@
       "baseline_voice": 0.2265,
       "pipeline_voice": 0.3629,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 222,
@@ -615,7 +615,7 @@
       "baseline_voice": 0.1773,
       "pipeline_voice": 0.4106,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 1
     },
     {
       "number": 223,
@@ -629,7 +629,7 @@
       "baseline_voice": 0.1947,
       "pipeline_voice": 0.2787,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 224,
@@ -643,7 +643,7 @@
       "baseline_voice": 0.2605,
       "pipeline_voice": 0.3046,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 225,
@@ -657,7 +657,7 @@
       "baseline_voice": 0.173,
       "pipeline_voice": 0.3372,
       "baseline_ms": 0,
-      "pipeline_ms": 4
+      "pipeline_ms": 1
     },
     {
       "number": 226,
@@ -671,7 +671,7 @@
       "baseline_voice": 0.2392,
       "pipeline_voice": 0.2575,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 227,
@@ -685,7 +685,7 @@
       "baseline_voice": 0.2095,
       "pipeline_voice": 0.3176,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 228,
@@ -698,8 +698,8 @@
       "pipeline_quality": 3,
       "baseline_voice": 0.1272,
       "pipeline_voice": 0.4486,
-      "baseline_ms": 0,
-      "pipeline_ms": 5
+      "baseline_ms": 1,
+      "pipeline_ms": 2
     },
     {
       "number": 229,
@@ -713,7 +713,7 @@
       "baseline_voice": 0.2163,
       "pipeline_voice": 0.3085,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     },
     {
       "number": 230,
@@ -727,7 +727,7 @@
       "baseline_voice": 0.2799,
       "pipeline_voice": 0.2924,
       "baseline_ms": 0,
-      "pipeline_ms": 5
+      "pipeline_ms": 2
     }
   ]
 }

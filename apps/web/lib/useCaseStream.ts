@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { NodeState } from "../components/PipelineStepper";
 import { api } from "./api";
-import type { AgentEvent, NodeKey, Stage } from "./types";
+import type { AgentEvent, NodeKey, NodeState, Stage } from "./types";
 
 const EVENT_TYPES = [
   "stage",

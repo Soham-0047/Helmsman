@@ -18,6 +18,7 @@ Maestro Case stage, and fans them out over SSE.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from typing import AsyncIterator
 
@@ -31,6 +32,7 @@ from .agents import (
 )
 from .agents.base import AgentRun
 from .agents.context import PipelineCtx
+from .metrics import metrics
 from .schemas import AgentEvent, PipelineRequest, PipelineResult, VoiceProfile
 from .util import extract_code_blocks
 from .vectorstore import ensure_seeded, store
@@ -76,6 +78,7 @@ def _complete_ev(case_id: str, agent: str, run: AgentRun) -> AgentEvent:
 
 async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
     started = time.monotonic()
+    metrics.incr("pipeline.runs")
     case_id = req.case_id
     repo_id = str(req.repo.github_id or req.repo.full_name)
 
@@ -98,6 +101,13 @@ async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
               message=f"Case opened for issue #{req.issue.number}")
 
     # ---- Classification -------------------------------------------------
+    # The vector search (embed query + cosine) does NOT depend on the
+    # classification, so we kick it off concurrently with the Classifier's model
+    # call and await it only when the Retriever needs it. Overlapping the two
+    # network/compute calls shaves real latency in live mode.
+    query = f"{ctx.issue.title}\n{ctx.issue.body}"
+    search_task = asyncio.create_task(store.search(repo_id, query, k=5, exclude=ctx.issue.number))
+
     yield _ev(case_id, type="stage", stage="Classification", status="entered")
     yield _ev(case_id, type="agent_start", agent="classifier", stage="Classification")
     crun = await classifier.run(ctx)
@@ -106,6 +116,9 @@ async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
 
     # Spam short-circuit
     if category == "spam":
+        search_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await search_task
         for a in ("retriever", "reproducer", "source_analyzer", "prioritizer", "voice_profiler", "responder"):
             yield _ev(case_id, type="agent_skipped", agent=a, stage=AGENT_STAGE[a],
                       message="skipped: issue classified as spam")
@@ -117,10 +130,10 @@ async def run_pipeline(req: PipelineRequest) -> AsyncIterator[AgentEvent]:
     # ---- Investigation --------------------------------------------------
     yield _ev(case_id, type="stage", stage="Investigation", status="entered")
 
-    # Context Retriever (always): embed + vector search, then re-rank.
+    # Context Retriever (always): the embed+search overlapped the classifier; now
+    # await it and re-rank.
     yield _ev(case_id, type="agent_start", agent="retriever", stage="Investigation")
-    query = f"{ctx.issue.title}\n{ctx.issue.body}"
-    ctx.candidates = await store.search(repo_id, query, k=5, exclude=ctx.issue.number)
+    ctx.candidates = await search_task
     rrun = await retriever.run(ctx)
     yield _complete_ev(case_id, "retriever", rrun)
 

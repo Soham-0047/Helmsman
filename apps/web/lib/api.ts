@@ -16,6 +16,7 @@ export const api = {
   gateway: GATEWAY,
   health: () => j<any>("/health"),
   adminInfo: () => j<any>("/api/admin/info"),
+  metrics: () => j<any>("/api/metrics"),
 
   listCases: (params: { repo_id?: string; stage?: string; limit?: number } = {}) => {
     const q = new URLSearchParams();

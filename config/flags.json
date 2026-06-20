@@ -22,6 +22,11 @@
       "description": "When ON, the UiPath RPA executor logs the GitHub action it WOULD take but does not call the GitHub API (safe for demos). When OFF, approved actions are executed for real. Default ON until a real GitHub OAuth token is connected."
     },
     {
+      "key": "helmsman.classifier_escalation",
+      "strategy": "on",
+      "description": "When ON, a Classifier result whose confidence is below HELMSMAN_CLASSIFIER_ESCALATION_THRESHOLD (default 0.6) triggers a second opinion from the reasoning model (qwen3-32b, thinking mode); the more confident label wins. Only fires with a real model present (offline the first call already falls back). Classification drives the whole pipeline, so escalating the unsure cases is the cheapest place to buy accuracy."
+    },
+    {
       "key": "helmsman.canary_new_responder",
       "strategy": "percent",
       "percent": 0,

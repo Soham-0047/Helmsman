@@ -66,6 +66,18 @@ app.get("/api/admin/info", async (_req, res) => {
   });
 });
 
+// Runtime efficiency snapshot for the dashboard control-plane panel: proxies the
+// agent runtime's /metrics (cache-hit / fallback / retry rates + latency).
+app.get("/api/metrics", async (_req, res) => {
+  try {
+    const r = await fetch(`${config.agentsUrl}/metrics`);
+    if (!r.ok) throw new Error(`runtime ${r.status}`);
+    res.json(await r.json());
+  } catch {
+    res.json({ ok: false, note: "agent runtime not reachable", counters: {}, derived: {}, latency_ms: {} });
+  }
+});
+
 app.use("/demo", demoRouter);
 app.use("/api/cases", casesRouter);
 app.use("/api/repos", reposRouter);

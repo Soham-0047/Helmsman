@@ -9,12 +9,37 @@ surface correctly without any API key.
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from typing import Iterable
 
 import httpx
 import numpy as np
 
 from .config import settings
+from .metrics import metrics
+
+# Process-local LRU cache: text -> 384-d vector. Embedding the same issue/query
+# text repeatedly (corpus re-seeds, duplicate benchmark passes, the responder
+# re-embedding a draft) is common, and embedding is pure for a given text — so
+# caching is both safe and a real efficiency win. Bounded by HELMSMAN_EMBED_CACHE_SIZE.
+_CACHE: "OrderedDict[str, list[float]]" = OrderedDict()
+_CACHE_MAX = max(0, settings.embed_cache_size)
+
+
+def _cache_get(text: str) -> list[float] | None:
+    v = _CACHE.get(text)
+    if v is not None:
+        _CACHE.move_to_end(text)
+    return v
+
+
+def _cache_put(text: str, vec: list[float]) -> None:
+    if _CACHE_MAX <= 0:
+        return
+    _CACHE[text] = vec
+    _CACHE.move_to_end(text)
+    while len(_CACHE) > _CACHE_MAX:
+        _CACHE.popitem(last=False)
 
 _DIM = settings.embedding_dim
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
@@ -66,13 +91,42 @@ def _local_embed(text: str) -> np.ndarray:
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Return a 384-dim embedding per input text."""
-    if settings.embeddings_api_url:
-        try:
-            return await _api_embed(texts)
-        except Exception:
-            pass  # fall through to local
-    return [_local_embed(t).tolist() for t in texts]
+    """Return a 384-dim embedding per input text, with an LRU cache in front.
+
+    Only the cache MISSES are sent to the API / local embedder; results are
+    cached so repeated text (corpus re-seeds, repeated queries) is free.
+    """
+    if not texts:
+        return []
+    metrics.incr("embed.lookups", len(texts))
+
+    out: list[list[float] | None] = [None] * len(texts)
+    misses: list[int] = []
+    for i, t in enumerate(texts):
+        cached = _cache_get(t)
+        if cached is not None:
+            out[i] = cached
+            metrics.incr("embed.cache_hit")
+        else:
+            misses.append(i)
+
+    if misses:
+        miss_texts = [texts[i] for i in misses]
+        if settings.embeddings_api_url:
+            try:
+                vecs = await _api_embed(miss_texts)
+                metrics.incr("embed.api", len(miss_texts))
+            except Exception:
+                vecs = [_local_embed(t).tolist() for t in miss_texts]
+                metrics.incr("embed.local", len(miss_texts))
+        else:
+            vecs = [_local_embed(t).tolist() for t in miss_texts]
+            metrics.incr("embed.local", len(miss_texts))
+        for idx, vec in zip(misses, vecs):
+            out[idx] = vec
+            _cache_put(texts[idx], vec)
+
+    return [v if v is not None else _local_embed(texts[i]).tolist() for i, v in enumerate(out)]
 
 
 async def embed_one(text: str) -> list[float]:

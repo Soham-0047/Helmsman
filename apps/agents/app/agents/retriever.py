@@ -29,13 +29,21 @@ def _candidates_block(ctx: PipelineCtx) -> str:
     return "\n".join(lines)
 
 
-def _is_duplicate(top_cos: float, second_cos: float) -> bool:
-    """Hard duplicate gate. With a real embedder (bge-small), near-duplicates
-    score very high so an absolute threshold suffices. With the offline hashing
-    embedder, a true duplicate is a clear OUTLIER above its neighbors."""
+def _is_duplicate(top_score: float, second_score: float) -> bool:
+    """Hard duplicate gate.
+
+    Live (bge-small): near-duplicates score very high in cosine, so an absolute
+    threshold suffices. Offline (hashing embedder): gate on the FUSED hybrid
+    score — a true duplicate must clear a precision-first floor AND be an outlier
+    above the runner-up. Lexical TF-IDF fusion lifts paraphrase duplicates that
+    share rare terms above the dense-only score, recovering recall the cosine
+    gate alone missed, while the floor keeps the top non-duplicate out."""
     if settings.using_local_embeddings:
-        return top_cos >= settings.dup_local_floor and (top_cos - second_cos) >= settings.dup_local_gap
-    return top_cos >= settings.dup_threshold
+        return (
+            top_score >= settings.dup_hybrid_floor
+            and (top_score - second_score) >= settings.dup_hybrid_gap
+        )
+    return top_score >= settings.dup_threshold
 
 
 def _dup_decision(ctx: PipelineCtx) -> tuple[int | None, float, float]:
@@ -44,21 +52,28 @@ def _dup_decision(ctx: PipelineCtx) -> tuple[int | None, float, float]:
     An issue can only be a duplicate of an EARLIER issue (lower number) — you
     can't duplicate something filed after you. So we only consider candidates
     that predate the current issue, and require that candidate to be a clear,
-    high-similarity outlier above the rest.
-    """
+    high-similarity outlier above the rest. The gating signal is the hybrid score
+    offline and the raw cosine in live mode (see _is_duplicate)."""
     cands = ctx.candidates
     if not cands:
         return None, 0.0, 0.0
-    top_overall = cands[0].similarity
+
+    def gate_score(c) -> float:
+        return c.hybrid if settings.using_local_embeddings else c.cosine
+
+    top_overall_cos = cands[0].cosine
     earlier = [c for c in cands if c.issue_number < ctx.issue.number]
     if not earlier:
-        return None, 0.0, top_overall
-    top_e = earlier[0]  # candidates are sorted desc by similarity
-    others = [c.similarity for c in cands if c.issue_number != top_e.issue_number]
+        return None, 0.0, top_overall_cos
+    top_e = max(earlier, key=gate_score)  # the best earlier candidate by the gate signal
+    # The outlier gap is measured against the runner-up among EARLIER candidates
+    # only. A *later* sibling duplicate (same root issue filed afterwards) must not
+    # shrink the gap — that's evidence of a duplicate cluster, not against one.
+    others = [gate_score(c) for c in earlier if c.issue_number != top_e.issue_number]
     second = max(others) if others else 0.0
-    if _is_duplicate(top_e.similarity, second):
-        return top_e.issue_number, round(min(0.99, 0.5 + top_e.similarity), 3), top_overall
-    return None, 0.0, top_overall
+    if _is_duplicate(gate_score(top_e), second):
+        return top_e.issue_number, round(min(0.99, 0.5 + top_e.cosine), 3), top_overall_cos
+    return None, 0.0, top_overall_cos
 
 
 def fallback(ctx: PipelineCtx) -> RetrieverOutput:

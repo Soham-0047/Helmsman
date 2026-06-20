@@ -12,6 +12,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 
 from fastapi import FastAPI
@@ -21,12 +22,21 @@ from pydantic import BaseModel
 from .agents import benchmark as bench
 from .agents.voice_profiler import run as run_voice
 from .config import settings
+from .metrics import metrics
 from .model_router import router as model_router
 from .pipeline import NODE_ORDER, run_pipeline, run_pipeline_collected
 from .schemas import Issue, PipelineRequest, Repo
 from .vectorstore import store
 
-app = FastAPI(title="Helmsman Agent Runtime", version="1.0.0")
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Pooled HTTP client is created lazily; close it cleanly on shutdown.
+    yield
+    await model_router.aclose()
+
+
+app = FastAPI(title="Helmsman Agent Runtime", version="1.0.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -42,6 +52,19 @@ async def health() -> dict:
         "node_order": NODE_ORDER,
         "dup_threshold": settings.dup_threshold,
     }
+
+
+@app.get("/metrics")
+async def get_metrics() -> dict:
+    """Runtime efficiency snapshot: call/retry/fallback counters, provider
+    success rate, embedding cache-hit rate, and p50/p95/max latency per op."""
+    return metrics.snapshot()
+
+
+@app.post("/metrics/reset")
+async def reset_metrics() -> dict:
+    metrics.reset()
+    return {"ok": True}
 
 
 @app.post("/pipeline/run")
