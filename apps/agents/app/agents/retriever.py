@@ -58,14 +58,21 @@ def _dup_decision(ctx: PipelineCtx) -> tuple[int | None, float, float]:
     if not cands:
         return None, 0.0, 0.0
 
+    local = settings.using_local_embeddings
+
     def gate_score(c) -> float:
-        return c.hybrid if settings.using_local_embeddings else c.cosine
+        return c.hybrid if local else c.cosine
 
     top_overall_cos = cands[0].cosine
     earlier = [c for c in cands if c.issue_number < ctx.issue.number]
     if not earlier:
         return None, 0.0, top_overall_cos
     top_e = max(earlier, key=gate_score)  # the best earlier candidate by the gate signal
+    # Offline precision guard: require dense (semantic) corroboration so a pair
+    # that only shares a category keyword can't be flagged on the lexical signal
+    # alone. True restatements clear this comfortably (see dup_cosine_floor).
+    if local and top_e.cosine < settings.dup_cosine_floor:
+        return None, 0.0, top_overall_cos
     # The outlier gap is measured against the runner-up among EARLIER candidates
     # only. A *later* sibling duplicate (same root issue filed afterwards) must not
     # shrink the gap — that's evidence of a duplicate cluster, not against one.

@@ -8,6 +8,8 @@ Runs in the Investigation stage in parallel with the bug-only agents.
 """
 from __future__ import annotations
 
+import math
+
 from ..schemas import PrioritizerOutput
 from ..util import count_hits, SECURITY_KEYWORDS, SEVERITY_KEYWORDS
 from .base import AgentRun, run_llm_agent
@@ -15,6 +17,22 @@ from .context import PipelineCtx
 
 PROMPT_KEY = "helmsman.prioritizer.v1"
 MODEL = "qwen3-8b"
+
+# Reactions and age are engagement/staleness signals with diminishing returns:
+# the jump from 0->5 reactions (or 0->5 days unanswered) is far more informative
+# than 45->50. A linear ramp saturated everything past a hard cap (12 reactions,
+# 10 days) into a single value; log-scaling spreads the signal smoothly across
+# the whole range and only flattens near the top. The rubric WEIGHTS are
+# unchanged (severity 30 / contributor 20 / reactions 15 / age 15 / security 20).
+_REACTION_SAT = 30.0   # reactions beyond this add little marginal urgency
+_AGE_SAT_HOURS = 480.0  # ~20 days unanswered ≈ maximally stale
+
+
+def _log_saturate(value: float, saturation: float) -> float:
+    """Concave 0..1 ramp: fast near 0, flattening toward `saturation`."""
+    if value <= 0:
+        return 0.0
+    return min(1.0, math.log1p(value) / math.log1p(saturation))
 
 
 def compute_rubric(ctx: PipelineCtx) -> PrioritizerOutput:
@@ -25,8 +43,8 @@ def compute_rubric(ctx: PipelineCtx) -> PrioritizerOutput:
 
     sev = min(1.0, 0.4 * len(sev_hits))
     contrib = 1.0 if issue.author_is_contributor else 0.0
-    react = min(1.0, issue.reactions / 12.0)
-    age = min(1.0, issue.age_hours / 240.0)
+    react = _log_saturate(issue.reactions, _REACTION_SAT)
+    age = _log_saturate(issue.age_hours, _AGE_SAT_HOURS)
     sec = 1.0 if sec_hits else 0.0
 
     weighted = 0.30 * sev + 0.20 * contrib + 0.15 * react + 0.15 * age + 0.20 * sec

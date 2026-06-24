@@ -466,6 +466,91 @@ export function Reveal({
   );
 }
 
+/* ============================================================
+   useInView — fire once when an element scrolls into view
+   ============================================================ */
+export function useInView<T extends HTMLElement = HTMLDivElement>(threshold = 0.3) {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setInView(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [threshold]);
+  return { ref, inView };
+}
+
+/* ============================================================
+   CountUp — animate a number up when scrolled into view
+   ============================================================ */
+export function CountUp({
+  to,
+  decimals = 0,
+  duration = 1100,
+  prefix = "",
+  suffix = "",
+  className,
+  style,
+}: {
+  to: number;
+  decimals?: number;
+  duration?: number;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const { ref, inView } = useInView<HTMLSpanElement>(0.5);
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    const reduce =
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setVal(to);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setVal(to * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else setVal(to);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, to, duration]);
+  const text = val.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return (
+    <span ref={ref} className={className} style={style}>
+      {prefix}
+      {text}
+      {suffix}
+    </span>
+  );
+}
+
 // Reusable hooks-free utility: detect narrow viewport.
 export function useNarrow(bp = 720) {
   const [narrow, setNarrow] = useState(false);

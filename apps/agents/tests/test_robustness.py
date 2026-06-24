@@ -73,6 +73,44 @@ def test_tfidf_cosine_bounds_and_overlap():
     assert 0.0 < partial < 1.0
 
 
+def test_bm25_normalized_bounds_and_length_norm():
+    from app.vectorstore import _bm25_normalized
+
+    idf = {"websocket": 2.5, "memory": 1.2, "the": 0.1}
+    q = {"websocket": 1.0, "memory": 1.0}
+    q_len, avgdl, k1, b = 2.0, 5.0, 1.4, 0.75
+
+    # a document identical to the query self-normalizes to 1.0
+    assert _bm25_normalized(q, q, q_len, q_len, idf, avgdl, k1, b) >= 0.99
+    # no token overlap -> 0
+    assert _bm25_normalized(q, {"unrelated": 1.0}, 1.0, q_len, idf, avgdl, k1, b) == 0.0
+    # partial overlap lands strictly inside (0, 1)
+    partial = _bm25_normalized(q, {"websocket": 1.0}, 1.0, q_len, idf, avgdl, k1, b)
+    assert 0.0 < partial < 1.0
+    # length normalization: same matched terms, but a longer (padded) doc scores lower
+    short = _bm25_normalized(q, {"websocket": 1.0, "memory": 1.0}, 2.0, q_len, idf, avgdl, k1, b)
+    long = _bm25_normalized(
+        q, {"websocket": 1.0, "memory": 1.0, "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0}, 6.0, q_len, idf, avgdl, k1, b
+    )
+    assert short > long
+    # a rarer shared term (higher idf) corroborates more than a common one
+    rare = _bm25_normalized({"websocket": 1.0}, {"websocket": 1.0}, 1.0, 1.0, idf, avgdl, k1, b)
+    common = _bm25_normalized({"the": 1.0}, {"the": 1.0}, 1.0, 1.0, idf, avgdl, k1, b)
+    assert rare >= common  # self-normalized identical match; rare term is never weaker
+
+
+def test_dup_gate_requires_cosine_corroboration(monkeypatch):
+    # The precision guard: a lexical-only match (high hybrid, weak cosine) must not
+    # be flagged a duplicate. Mirrors the real #229->#116 keyword false positive.
+    monkeypatch.setattr(type(settings), "using_local_embeddings", property(lambda s: True))
+    cands = [
+        Candidate(116, "x", 0.406, cosine=0.387, lexical=0.425, hybrid=0.406),  # lexical-driven, weak cosine
+        Candidate(101, "x", 0.150, cosine=0.20, lexical=0.10, hybrid=0.150),
+    ]
+    dup, _, _ = ret._dup_decision(_ctx(229, cands))
+    assert dup is None  # rejected: cosine 0.387 below the corroboration floor
+
+
 def test_inmemory_hybrid_ranks_paraphrase_duplicate_first():
     store = InMemoryStore()
     corpus = [
@@ -113,6 +151,36 @@ def test_dup_gate_precision_floor(monkeypatch):
     ]
     dup, _, _ = ret._dup_decision(_ctx(225, cands))
     assert dup is None
+
+
+# ---------------- prioritizer rubric (log-scaled signals, locked weights) ----------------
+def _prio_ctx(title, body, reactions=0, age=0.0, contrib=False):
+    issue = SimpleNamespace(
+        title=title, body=body, reactions=reactions, age_hours=age,
+        author_is_contributor=contrib, number=1,
+    )
+    return SimpleNamespace(issue=issue, classification=SimpleNamespace(category="bug"), retriever=None)
+
+
+def test_prioritizer_security_override_and_log_scaling():
+    from app.agents.prioritizer import _log_saturate, compute_rubric
+
+    # security signal forces respond_now regardless of an otherwise-modest score
+    sec = compute_rubric(_prio_ctx("Security: API key leaked", "token printed in logs"))
+    assert sec.recommended_action == "respond_now"
+
+    # reactions contribute with diminishing returns and stay monotonic
+    low = compute_rubric(_prio_ctx("Bug", "x", reactions=2)).score
+    mid = compute_rubric(_prio_ctx("Bug", "x", reactions=10)).score
+    hi = compute_rubric(_prio_ctx("Bug", "x", reactions=50)).score
+    assert low <= mid <= hi
+
+    # the saturation curve is concave, bounded, and zero at zero
+    assert _log_saturate(0, 30) == 0.0
+    assert 0.0 < _log_saturate(5, 30) < _log_saturate(40, 30) <= 1.0
+    assert _log_saturate(10_000, 30) == 1.0
+    # concavity: the first 5 reactions buy more than the next 25
+    assert _log_saturate(5, 30) > (_log_saturate(30, 30) - _log_saturate(5, 30))
 
 
 # ---------------- JSON parse / self-repair validation ----------------

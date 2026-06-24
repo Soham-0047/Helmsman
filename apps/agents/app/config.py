@@ -140,6 +140,18 @@ class Settings:
     def hybrid_vector_weight(self) -> float:
         return float(os.getenv("HELMSMAN_HYBRID_VECTOR_WEIGHT", "0.5"))
 
+    # Okapi BM25 parameters for the offline lexical signal (replaces the older
+    # raw TF-IDF cosine). k1 controls term-frequency saturation; b controls how
+    # strongly document length is normalized. 1.4 / 0.75 are the standard,
+    # well-tested defaults and need no per-corpus tuning.
+    @property
+    def bm25_k1(self) -> float:
+        return float(os.getenv("HELMSMAN_BM25_K1", "1.4"))
+
+    @property
+    def bm25_b(self) -> float:
+        return float(os.getenv("HELMSMAN_BM25_B", "0.75"))
+
     @property
     def classifier_escalation_threshold(self) -> float:
         """Below this classifier confidence, get a reasoning-model second opinion."""
@@ -152,6 +164,20 @@ class Settings:
     @property
     def dup_hybrid_gap(self) -> float:
         return float(os.getenv("HELMSMAN_DUP_HYBRID_GAP", "0.05"))
+
+    @property
+    def dup_cosine_floor(self) -> float:
+        """Offline precision guard: a flagged duplicate must be corroborated by
+        the DENSE vector (semantic similarity), not lexical keyword overlap alone.
+
+        BM25 lexical fusion lifts paraphrase recall, but a pair that merely shares
+        a category keyword (e.g. two unrelated "dependency vulnerability" issues)
+        can score high on lexical while being only loosely related semantically.
+        Requiring the top candidate's raw cosine to clear this floor keeps those
+        out — true restatements comfortably exceed it. Live mode uses the absolute
+        cosine dup_threshold instead and is unaffected.
+        """
+        return float(os.getenv("HELMSMAN_DUP_COSINE_FLOOR", "0.42"))
 
 
 settings = Settings()

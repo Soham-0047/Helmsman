@@ -36,8 +36,17 @@ def _tf(tokens: list[str]) -> dict[str, float]:
     return dict(Counter(tokens))
 
 
+def _doc_len(tf: dict[str, float]) -> float:
+    return sum(tf.values())
+
+
 def _tfidf_cosine(q_tf: dict[str, float], d_tf: dict[str, float], idf: dict[str, float]) -> float:
-    """Cosine over sublinear-TF * IDF weighted sparse vectors, bounded [0,1]."""
+    """Cosine over sublinear-TF * IDF weighted sparse vectors, bounded [0,1].
+
+    Retained as the reference lexical-similarity primitive (and unit-tested); the
+    production offline lexical signal is now Okapi BM25 (see _bm25), which adds
+    term-frequency saturation and document-length normalization.
+    """
     if not q_tf or not d_tf:
         return 0.0
 
@@ -50,6 +59,57 @@ def _tfidf_cosine(q_tf: dict[str, float], d_tf: dict[str, float], idf: dict[str,
     small, big = (qw, dw) if len(qw) <= len(dw) else (dw, qw)
     dot = sum(v * big.get(t, 0.0) for t, v in small.items())
     return dot / (qn * dn)
+
+
+def _bm25(
+    q_tf: dict[str, float],
+    d_tf: dict[str, float],
+    d_len: float,
+    idf: dict[str, float],
+    avgdl: float,
+    k1: float,
+    b: float,
+) -> float:
+    """Okapi BM25 score of a query against one document (raw, unnormalized).
+
+    Length normalization (b) stops long issues from dominating purely by having
+    more words; saturation (k1) stops a single repeated term from running away.
+    Both matter for short, paraphrased issue text where one shared rare term
+    ("websocket", "utc", "byte") should count, but not unboundedly.
+    """
+    if not q_tf or not d_tf or avgdl <= 0:
+        return 0.0
+    norm = k1 * (1.0 - b + b * (d_len / avgdl))
+    s = 0.0
+    for t in q_tf:
+        f = d_tf.get(t, 0.0)
+        if f <= 0:
+            continue
+        s += idf.get(t, 0.0) * (f * (k1 + 1.0)) / (f + norm)
+    return s
+
+
+def _bm25_normalized(
+    q_tf: dict[str, float],
+    d_tf: dict[str, float],
+    d_len: float,
+    q_len: float,
+    idf: dict[str, float],
+    avgdl: float,
+    k1: float,
+    b: float,
+) -> float:
+    """BM25 mapped to ~[0,1] by dividing by the query's self-score.
+
+    Self-normalization keeps the signal absolute and comparable across queries
+    (so the precision-first duplicate floor stays meaningful) — unlike per-query
+    min-max, which would force the top candidate to 1.0 and over-trigger the gate.
+    """
+    raw = _bm25(q_tf, d_tf, d_len, idf, avgdl, k1, b)
+    if raw <= 0:
+        return 0.0
+    self_score = _bm25(q_tf, q_tf, q_len, idf, avgdl, k1, b) or 1.0
+    return max(0.0, min(1.0, raw / self_score))
 
 
 class InMemoryStore:
@@ -84,20 +144,30 @@ class InMemoryStore:
         n = max(1, len(self._by_repo.get(repo_id, [])))
         return {t: math.log((n + 1) / (c + 1)) + 1.0 for t, c in df.items()}
 
+    def _idf_bm25(self, repo_id: str) -> dict[str, float]:
+        """BM25 IDF: ln(1 + (N - df + 0.5)/(df + 0.5)). Non-negative, so a term in
+        nearly every doc contributes ~0 rather than going negative."""
+        df = self._df.get(repo_id, Counter())
+        n = max(1, len(self._by_repo.get(repo_id, [])))
+        return {t: math.log(1.0 + (n - c + 0.5) / (c + 0.5)) for t, c in df.items()}
+
     async def search(self, repo_id: str, query: str, k: int = 5, exclude: int | None = None) -> list[Candidate]:
         bucket = self._by_repo.get(repo_id, [])
         if not bucket:
             return []
         qv = await embed_one(query)
         q_tf = _tf(_tokens(query))
-        idf = self._idf(repo_id)
+        q_len = _doc_len(q_tf)
+        idf = self._idf_bm25(repo_id)
+        avgdl = sum(_doc_len(tf) for (_, _, _, tf) in bucket) / max(1, len(bucket))
+        k1, b = settings.bm25_k1, settings.bm25_b
         w = settings.hybrid_vector_weight
         scored: list[Candidate] = []
         for (num, content, vec, tf) in bucket:
             if num == exclude:
                 continue
             cos = cosine(qv, vec)
-            lex = _tfidf_cosine(q_tf, tf, idf)
+            lex = _bm25_normalized(q_tf, tf, _doc_len(tf), q_len, idf, avgdl, k1, b)
             hyb = w * cos + (1.0 - w) * lex
             scored.append(Candidate(num, content, hyb, round(cos, 4), round(lex, 4), round(hyb, 4)))
         scored.sort(key=lambda c: c.hybrid, reverse=True)

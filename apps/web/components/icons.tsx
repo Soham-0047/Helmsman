@@ -199,6 +199,126 @@ const Icons: Record<string, (s: number) => ReactNode> = {
       <line x1="3" y1="18" x2="21" y2="18" />
     </Svg>
   ),
+  chevronDown: (s) => (
+    <Svg size={s}>
+      <polyline points="6 9 12 15 18 9" />
+    </Svg>
+  ),
+  chart: (s) => (
+    <Svg size={s}>
+      <path d="M4 4v16h16" />
+      <path d="M8 14l3-3 3 2 4-5" />
+    </Svg>
+  ),
+  bolt: (s) => (
+    <Svg size={s}>
+      <path d="M13 3 5 13h5l-1 8 8-11h-5l1-7z" />
+    </Svg>
+  ),
+  inbox: (s) => (
+    <Svg size={s}>
+      <path d="M4 13h4l1.5 3h5L16 13h4" />
+      <path d="M4 13 6 5h12l2 8v6H4v-6z" />
+    </Svg>
+  ),
+  shield: (s) => (
+    <Svg size={s}>
+      <path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3z" />
+      <polyline points="9 12 11 14 15 9.5" />
+    </Svg>
+  ),
+  clock: (s) => (
+    <Svg size={s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <polyline points="12 7 12 12 16 14" />
+    </Svg>
+  ),
+  sparkles: (s) => (
+    <Svg size={s}>
+      <path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4z" />
+      <path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8z" />
+    </Svg>
+  ),
+  gauge: (s) => (
+    <Svg size={s}>
+      <path d="M4 15a8 8 0 0 1 16 0" />
+      <line x1="12" y1="15" x2="15.5" y2="10.5" />
+      <circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  bell: (s) => (
+    <Svg size={s}>
+      <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z" />
+      <path d="M10 19a2 2 0 0 0 4 0" />
+    </Svg>
+  ),
+  users: (s) => (
+    <Svg size={s}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 5.5a3 3 0 0 1 0 5.8" />
+      <path d="M17 14.2A5.5 5.5 0 0 1 20.5 20" />
+    </Svg>
+  ),
+  lock: (s) => (
+    <Svg size={s}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Svg>
+  ),
+  repeat: (s) => (
+    <Svg size={s}>
+      <polyline points="17 2 21 6 17 10" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 22 3 18 7 14" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </Svg>
+  ),
+  filter: (s) => (
+    <Svg size={s}>
+      <path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" />
+    </Svg>
+  ),
+  trendUp: (s) => (
+    <Svg size={s}>
+      <polyline points="3 17 9 11 13 15 21 7" />
+      <polyline points="15 7 21 7 21 13" />
+    </Svg>
+  ),
+  target: (s) => (
+    <Svg size={s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
+  quote: (s) => (
+    <Svg size={s}>
+      <path d="M9 7H5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2v2a2 2 0 0 1-2 2" />
+      <path d="M19 7h-4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2v2a2 2 0 0 1-2 2" />
+    </Svg>
+  ),
+  pause: (s) => (
+    <Svg size={s} sw={2}>
+      <line x1="9" y1="5" x2="9" y2="19" />
+      <line x1="15" y1="5" x2="15" y2="19" />
+    </Svg>
+  ),
+  arrowDown: (s) => (
+    <Svg size={s}>
+      <line x1="12" y1="4" x2="12" y2="20" />
+      <polyline points="6 14 12 20 18 14" />
+    </Svg>
+  ),
+  branch: (s) => (
+    <Svg size={s}>
+      <circle cx="6" cy="6" r="2.2" />
+      <circle cx="6" cy="18" r="2.2" />
+      <circle cx="18" cy="8" r="2.2" />
+      <path d="M6 8.2v7.6" />
+      <path d="M18 10.2c0 4-4 3.3-6 5.2" />
+    </Svg>
+  ),
 };
 
 export function UIcon({ name, size = 16 }: { name: string; size?: number }) {

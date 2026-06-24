@@ -219,10 +219,22 @@ function SidebarBody({ active, onNavigate }: { active: string; onNavigate: (path
         className="t-xs text-muted"
         style={{ textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600, padding: "0 10px 6px" }}
       >
-        Pipeline
+        Triage
       </div>
-      <div className="col gap-4" style={{ marginBottom: 16 }}>
+      <div className="col gap-4" style={{ marginBottom: 14 }}>
         <NavItem active={active === "cases"} glyph={<Anchor size={16} />} label="Cases" onClick={() => onNavigate("/dashboard")} />
+        <NavItem active={active === "backlog"} glyph={<UIcon name="inbox" size={16} />} label="Backlog" onClick={() => onNavigate("/backlog")} />
+      </div>
+
+      <div
+        className="t-xs text-muted"
+        style={{ textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600, padding: "0 10px 6px" }}
+      >
+        Workspace
+      </div>
+      <div className="col gap-4" style={{ marginBottom: 14 }}>
+        <NavItem active={active === "insights"} glyph={<UIcon name="chart" size={16} />} label="Insights" onClick={() => onNavigate("/insights")} />
+        <NavItem active={active === "automations"} glyph={<UIcon name="bolt" size={16} />} label="Automations" onClick={() => onNavigate("/automations")} />
         <NavItem active={active === "connect"} glyph={<UIcon name="plus" size={16} />} label="Connect repo" onClick={() => onNavigate("/connect")} />
       </div>
 
