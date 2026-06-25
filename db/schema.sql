@@ -105,6 +105,38 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_vector
   ON issue_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ---------------------------------------------------------------------------
+-- feedback_events: the CLOSED LEARNING LOOP. One row per maintainer decision
+-- (approve / edit / reject). This is the highest-signal data in the system —
+-- the (AI draft -> human final) pair that the forward pipeline used to discard.
+-- It feeds three return paths: (1) online voice-profile refinement, (2) the
+-- compounding RAG corpus, (3) the exportable SFT/DPO fine-tuning dataset
+-- (GET /api/repos/:id/dataset). See apps/gateway/src/service.ts.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS feedback_events (
+  id                  BIGSERIAL PRIMARY KEY,
+  case_id             UUID REFERENCES cases(id) ON DELETE CASCADE,
+  repo_id             UUID REFERENCES repos(id) ON DELETE CASCADE,
+  verdict             TEXT NOT NULL CHECK (verdict IN ('approved', 'edited', 'rejected')),
+  issue_number        INTEGER,
+  issue_title         TEXT,
+  issue_body          TEXT,
+  classification      TEXT,
+  ai_draft            TEXT,                 -- the ORIGINAL model output (snapshot)
+  final_draft         TEXT,                 -- what the human actually shipped
+  edit_ratio          REAL,                 -- normalized Levenshtein 0 (identical) .. 1 (rewritten)
+  recommended_action  TEXT,                 -- what the pipeline recommended
+  approved_action     TEXT,                 -- the action the human approved (type)
+  action_overridden   BOOLEAN DEFAULT FALSE,-- did the human pick a different action?
+  reject_reason       TEXT,                 -- structured enum + optional free text
+  voice_match         REAL,                 -- responder's self-reported voice score, if any
+  voice_rating        INTEGER,              -- optional human 1-5 rating of the draft's voice
+  occurred_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_repo ON feedback_events (repo_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_case ON feedback_events (case_id);
+
+-- ---------------------------------------------------------------------------
 -- idempotency: dedupe webhook deliveries ({delivery_id}:{event_type}).
 -- Backed by Redis in live mode; this table is the durable fallback.
 -- ---------------------------------------------------------------------------

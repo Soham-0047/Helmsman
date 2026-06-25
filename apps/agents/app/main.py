@@ -7,6 +7,7 @@ Endpoints:
   POST /agents/voice-profile   Agent 5 standalone (repo connect)
   POST /embed                  embeddings (bge-small / local fallback)
   POST /vector/index           index issue embeddings into the RAG corpus
+  POST /dataset/build          build SFT + DPO fine-tuning corpora from feedback
   POST /baseline/run           single-agent baseline (benchmark)
   POST /judge/quality          LLM-judge quality score (benchmark)
 """
@@ -123,6 +124,27 @@ class IndexRequest(BaseModel):
 async def vector_index(req: IndexRequest) -> dict:
     added = await store.index_many(req.repo_id, req.issues)
     return {"indexed": added}
+
+
+class DatasetRequest(BaseModel):
+    repo_full_name: str = ""
+    maintainer_login: str = "maintainer"
+    voice_profile: dict = {}
+    events: list[dict] = []  # feedback_events rows from the gateway
+
+
+@app.post("/dataset/build")
+async def dataset_build(req: DatasetRequest) -> dict:
+    """Turn captured maintainer feedback into SFT + DPO fine-tuning corpora.
+
+    The export end of the closed learning loop — the gateway proxies this from
+    GET /api/repos/:id/dataset. Pure data shaping (see app/training.py), so it
+    behaves identically offline."""
+    from .training import build_dataset
+
+    return build_dataset(
+        req.events, req.repo_full_name, req.maintainer_login, req.voice_profile
+    )
 
 
 class BaselineRequest(BaseModel):

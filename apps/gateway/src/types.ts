@@ -105,3 +105,29 @@ export interface AuditEntry {
   output?: unknown;
   occurred_at: string;
 }
+
+// ---- Closed learning loop ---------------------------------------------------
+// One row per maintainer decision. The (ai_draft -> final_draft) pair is the
+// training signal the forward pipeline used to discard. See db/schema.sql.
+export type Verdict = "approved" | "edited" | "rejected";
+
+export interface FeedbackEvent {
+  id?: number;
+  case_id: string;
+  repo_id: string;
+  verdict: Verdict;
+  issue_number?: number | null;
+  issue_title?: string | null;
+  issue_body?: string | null;
+  classification?: string | null;
+  ai_draft?: string | null;
+  final_draft?: string | null;
+  edit_ratio?: number | null; // 0 = identical, 1 = fully rewritten
+  recommended_action?: string | null;
+  approved_action?: string | null;
+  action_overridden?: boolean;
+  reject_reason?: string | null;
+  voice_match?: number | null;
+  voice_rating?: number | null;
+  occurred_at?: string;
+}

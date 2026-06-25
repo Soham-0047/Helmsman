@@ -129,6 +129,73 @@ export function deriveInsights(cases: TriageLike[]): InsightsData {
   };
 }
 
+// ===========================================================================
+// Closed learning loop — metrics surfaced on the Learning panel. Mirrors the
+// gateway's summarizeLearning() output (apps/gateway/src/routes/repos.ts).
+// ===========================================================================
+export interface LearningStats {
+  total: number;
+  approved: number;
+  edited: number;
+  rejected: number;
+  editRate: number; // share of shipped replies the maintainer had to edit (↓ = learning)
+  acceptanceRate: number; // share of drafts shippable without rejection
+  avgEditRatio: number; // mean normalized edit distance
+  corpusContributed: number; // resolved issues fed back into the dedup corpus
+  datasetExamples: { sft: number; dpo: number };
+  editTrend: number[]; // edit ratio per shipped decision, oldest → newest
+  voiceTrend: number[]; // responder voice-match per decision, oldest → newest
+  rejectReasons: { reason: string; count: number }[];
+}
+
+export const EMPTY_LEARNING: LearningStats = {
+  total: 0,
+  approved: 0,
+  edited: 0,
+  rejected: 0,
+  editRate: 0,
+  acceptanceRate: 0,
+  avgEditRatio: 0,
+  corpusContributed: 0,
+  datasetExamples: { sft: 0, dpo: 0 },
+  editTrend: [],
+  voiceTrend: [],
+  rejectReasons: [],
+};
+
+/** Deterministic demo learning curve — a maintainer's edits falling as the
+ *  voice profile sharpens. Used when the gateway is offline / has no feedback. */
+export const DEMO_LEARNING: LearningStats = (() => {
+  // 24 decisions, edit ratio drifting down, voice match drifting up.
+  const editTrend = Array.from({ length: 24 }, (_, i) =>
+    Math.round(Math.max(0.06, 0.62 - i * 0.022 + ((i * 7) % 5) * 0.012) * 1000) / 1000
+  );
+  const voiceTrend = Array.from({ length: 24 }, (_, i) =>
+    Math.round(Math.min(0.97, 0.55 + i * 0.016 + ((i * 3) % 4) * 0.01) * 1000) / 1000
+  );
+  const edited = 9;
+  const rejected = 3;
+  const approved = 24 - edited - rejected;
+  const shipped = approved + edited;
+  return {
+    total: 24,
+    approved,
+    edited,
+    rejected,
+    editRate: Math.round((edited / shipped) * 1000) / 1000,
+    acceptanceRate: Math.round((shipped / 24) * 1000) / 1000,
+    avgEditRatio: Math.round((editTrend.reduce((a, b) => a + b, 0) / editTrend.length) * 1000) / 1000,
+    corpusContributed: shipped,
+    datasetExamples: { sft: shipped, dpo: edited },
+    editTrend,
+    voiceTrend,
+    rejectReasons: [
+      { reason: "tone too formal", count: 2 },
+      { reason: "missing repro ask", count: 1 },
+    ],
+  };
+})();
+
 /** Deterministic demo corpus — used when the gateway is offline. */
 function demoCorpus(): TriageLike[] {
   // distribution roughly matching the fixture mix

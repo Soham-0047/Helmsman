@@ -31,6 +31,21 @@
       "strategy": "percent",
       "percent": 0,
       "description": "Canary for a future Responder variant. percent rollout is deterministic by repo/maintainer id. Left at 0% — example of the percent strategy."
+    },
+    {
+      "key": "helmsman.feedback_capture",
+      "strategy": "on",
+      "description": "When ON, every maintainer decision (approve / edit / reject) writes a feedback_events row capturing the (AI draft -> human final) pair, edit distance, and action override. This is the labeled corpus behind the Learning view and the SFT/DPO dataset export (GET /api/repos/:id/dataset). Default ON — it is the closed learning loop; turning it off makes Helmsman stateless again."
+    },
+    {
+      "key": "helmsman.voice_online_refresh",
+      "strategy": "on",
+      "description": "When ON, a real (non-dry-run) approval re-profiles the maintainer's voice from a rolling window of their last ~100 actually-shipped replies (feedback_events.final_draft), not just the frozen connect-time comment corpus. This is online learning: the fingerprint tracks the maintainer's current voice, including the edits they keep making. Gated so it is reversible; the connect-time corpus remains a stable floor."
+    },
+    {
+      "key": "helmsman.index_resolved_cases",
+      "strategy": "on",
+      "description": "When ON, an approved case's issue text is indexed back into the per-repo RAG corpus (issue_embeddings) so the Context Retriever can recognize future duplicates of issues the maintainer has already handled. This makes duplicate detection compound over time instead of being frozen at the connect-time seed. Idempotent (upsert by repo+issue)."
     }
   ]
 }

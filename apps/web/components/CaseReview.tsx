@@ -54,6 +54,45 @@ function VoiceBar({ pct }: { pct: number }) {
   );
 }
 
+/* ---- optional voice-match rating (feeds the learning loop) ---- */
+function VoiceRating({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
+  return (
+    <div className="row gap-5" role="radiogroup" aria-label="Rate how well the draft matched your voice">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          aria-label={`${n} of 5`}
+          aria-checked={value === n}
+          role="radio"
+          title={`${n} / 5`}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 999,
+            padding: 0,
+            cursor: "pointer",
+            border: "1px solid var(--border)",
+            background: value && n <= value ? "var(--accent)" : "var(--elevated)",
+            transition: "background 0.15s var(--ease)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const REJECT_REASONS = [
+  "tone too formal",
+  "tone too casual",
+  "missing repro ask",
+  "wrong / duplicate link",
+  "factually off",
+  "too long",
+  "other",
+];
+
 /* ---- split draft editor with draggable divider ---- */
 function DraftEditor({
   value,
@@ -190,6 +229,9 @@ export function CaseReview({ caseId, initial, condensed = false, onClose, onActi
   const [draft, setDraft] = useState(initial?.draft ?? "");
   const [override, setOverride] = useState<string | null>(null); // local stage override after approve/reject
   const [busy, setBusy] = useState(false);
+  // Closed-loop feedback the maintainer can optionally attach to a decision.
+  const [reason, setReason] = useState("");
+  const [rating, setRating] = useState<number | null>(null);
 
   const refresh = async () => {
     try {
@@ -211,6 +253,8 @@ export function CaseReview({ caseId, initial, condensed = false, onClose, onActi
     setVm(initial ?? null);
     setDraft(initial?.draft ?? "");
     setOverride(null);
+    setReason("");
+    setRating(null);
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
@@ -235,7 +279,7 @@ export function CaseReview({ caseId, initial, condensed = false, onClose, onActi
   const approve = async () => {
     setBusy(true);
     try {
-      const r = await api.approve(caseId, { editedDraft: draft });
+      const r = await api.approve(caseId, { editedDraft: draft, rating: rating ?? undefined });
       const rpa = r?.rpa;
       const msg =
         rpa?.dryRun || !rpa
@@ -290,7 +334,7 @@ export function CaseReview({ caseId, initial, condensed = false, onClose, onActi
 
   const reject = async () => {
     try {
-      await api.reject(caseId, "Rejected from dashboard");
+      await api.reject(caseId, reason || "Rejected from dashboard", rating ?? undefined);
     } catch {
       /* offline */
     }
@@ -400,6 +444,39 @@ export function CaseReview({ caseId, initial, condensed = false, onClose, onActi
 
         {/* 7. actions */}
         <div className="col gap-10">
+          {/* optional structured feedback — turns this decision into training signal */}
+          {!executed && (
+            <div className="row wrap gap-16" style={{ alignItems: "flex-end" }}>
+              <div className="col gap-6">
+                <span className="t-xs text-muted">Voice match? (optional)</span>
+                <VoiceRating value={rating} onChange={setRating} />
+              </div>
+              <div className="col gap-6 grow" style={{ minWidth: 170 }}>
+                <span className="t-xs text-muted">Reject reason (optional)</span>
+                <select
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  aria-label="Reject reason"
+                  style={{
+                    background: "var(--elevated)",
+                    color: "var(--text)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "7px 10px",
+                    fontSize: 13,
+                    fontFamily: "var(--font-ui)",
+                  }}
+                >
+                  <option value="">—</option>
+                  {REJECT_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="row wrap gap-8 between">
             <div className="row gap-8 wrap">
               {executed ? (

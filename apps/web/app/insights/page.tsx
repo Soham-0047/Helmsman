@@ -2,7 +2,15 @@
 import { useEffect, useState } from "react";
 import type { Tone } from "../../lib/agents";
 import { api } from "../../lib/api";
-import { BENCH, DEMO_INSIGHTS, deriveInsights, MIN_SAVED_PER_ISSUE, type InsightsData } from "../../lib/insights";
+import {
+  BENCH,
+  DEMO_INSIGHTS,
+  DEMO_LEARNING,
+  deriveInsights,
+  MIN_SAVED_PER_ISSUE,
+  type InsightsData,
+  type LearningStats,
+} from "../../lib/insights";
 import { UIcon } from "../../components/icons";
 import { AppShell } from "../../components/shell";
 import { CountUp, Reveal, StatusDot, Tag, useInView } from "../../components/ui";
@@ -137,9 +145,185 @@ function Kpi({ icon, val, decimals, prefix, suffix, label }: { icon: string; val
   );
 }
 
+/* ---------------- learning trend (min/max-scaled line) ---------------- */
+function Trend({ data, color = "var(--accent)", height = 96 }: { data: number[]; color?: string; height?: number }) {
+  const { ref, inView } = useInView<HTMLDivElement>(0.4);
+  const w = 300;
+  const h = height;
+  if (data.length < 2) {
+    return (
+      <div ref={ref} className="t-xs text-muted" style={{ height, display: "flex", alignItems: "center" }}>
+        Not enough decisions yet — approve a few issues to chart the trend.
+      </div>
+    );
+  }
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const span = max - min || 1;
+  const step = w / (data.length - 1);
+  const pts = data.map((v, i) => [i * step, h - ((v - min) / span) * (h - 16) - 8] as const);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+  const area = `${line} L ${w} ${h} L 0 ${h} Z`;
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const last = pts[pts.length - 1];
+  const gid = `tg-${color.replace(/[^a-z]/gi, "")}`;
+  return (
+    <div ref={ref}>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display: "block", height }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${gid})`} style={{ opacity: inView ? 1 : 0, transition: "opacity 0.8s var(--ease) 0.3s" }} />
+        <path
+          d={line}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          strokeDasharray={len}
+          strokeDashoffset={inView ? 0 : len}
+          style={{ transition: "stroke-dashoffset 1.2s var(--ease)" }}
+        />
+        <circle cx={last[0]} cy={last[1]} r="3.5" fill={color} style={{ opacity: inView ? 1 : 0, transition: "opacity 0.4s var(--ease) 1s" }} />
+      </svg>
+    </div>
+  );
+}
+
+function DatasetButton({ repoId, format, enabled, label }: { repoId: string | null; format: "sft" | "dpo"; enabled: boolean; label: string }) {
+  if (!enabled || !repoId) {
+    return (
+      <span
+        className="btn btn-secondary"
+        style={{ opacity: 0.5, cursor: "not-allowed" }}
+        title="Connect a repo and approve a few issues to populate the dataset"
+      >
+        <UIcon name="arrowDown" size={14} /> {label}
+      </span>
+    );
+  }
+  return (
+    <a className="btn btn-secondary" href={api.datasetUrl(repoId, format)} download>
+      <UIcon name="arrowDown" size={14} /> {label}
+    </a>
+  );
+}
+
+function LearningPanel({ data, repoId, live }: { data: LearningStats; repoId: string | null; live: boolean }) {
+  const pct = (n: number) => Math.round(n * 100);
+  const voiceLast = data.voiceTrend.length ? pct(data.voiceTrend[data.voiceTrend.length - 1]) : null;
+  const totalExamples = data.datasetExamples.sft + data.datasetExamples.dpo;
+  const canDownload = live && !!repoId && totalExamples > 0;
+  return (
+    <Reveal>
+      <div className="card card-pad col gap-18">
+        <div className="row between wrap gap-10">
+          <div className="row gap-10" style={{ alignItems: "center" }}>
+            <span className="kpi-ic">
+              <UIcon name="repeat" size={16} />
+            </span>
+            <div>
+              <div className="t-sm" style={{ fontWeight: 600 }}>
+                Continuous learning
+              </div>
+              <p className="t-xs text-muted" style={{ marginTop: 2, maxWidth: 520 }}>
+                Every approval, edit and rejection teaches Helmsman this repo&apos;s voice — drafts feed the corpus, your
+                edits become training data, and the voice profile re-learns from what you actually ship.
+              </p>
+            </div>
+          </div>
+          <Tag tone={live ? "green" : "amber"}>
+            <StatusDot tone={live ? "green" : "amber"} /> {live ? "live" : "demo curve"}
+          </Tag>
+        </div>
+
+        <div className="kpi-grid">
+          <Kpi icon="flask" val={totalExamples} label="Training examples captured" />
+          <Kpi icon="trendUp" val={pct(data.editRate)} suffix="%" label="Edit rate · lower = learned" />
+          <Kpi icon="layers" val={data.corpusContributed} label="Issues fed to dedup corpus" />
+          <Kpi icon="gauge" val={pct(data.acceptanceRate)} suffix="%" label="Drafts accepted as-is" />
+        </div>
+
+        <div className="chart-grid">
+          <div className="card card-pad" style={{ height: "100%" }}>
+            <div className="row between" style={{ marginBottom: 10 }}>
+              <span className="t-sm text-secondary" style={{ fontWeight: 600 }}>
+                Edit ratio over time
+              </span>
+              <span className="mono t-xs" style={{ color: "var(--green)" }}>
+                <UIcon name="arrowDown" size={12} /> goal: down
+              </span>
+            </div>
+            <Trend data={data.editTrend} color="var(--accent)" />
+            <p className="t-xs text-muted" style={{ marginTop: 6 }}>
+              How much you change each draft before shipping. Falls as the voice profile sharpens.
+            </p>
+          </div>
+          <div className="card card-pad" style={{ height: "100%" }}>
+            <div className="row between" style={{ marginBottom: 10 }}>
+              <span className="t-sm text-secondary" style={{ fontWeight: 600 }}>
+                Voice match over time
+              </span>
+              {voiceLast != null && (
+                <span className="mono t-xs" style={{ color: "var(--green)" }}>
+                  {voiceLast}%
+                </span>
+              )}
+            </div>
+            <Trend data={data.voiceTrend} color="var(--green)" />
+            <p className="t-xs text-muted" style={{ marginTop: 6 }}>
+              The Responder&apos;s self-scored similarity to your fingerprint, re-learned from your shipped replies.
+            </p>
+          </div>
+        </div>
+
+        <div className="row between wrap gap-12" style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+          <div>
+            <div className="t-sm" style={{ fontWeight: 600 }}>
+              Export a fine-tuning dataset
+            </div>
+            <p className="t-xs text-muted" style={{ marginTop: 2, maxWidth: 460 }}>
+              Your decisions, serialized to standard JSONL — fine-tune a custom model on your own voice.{" "}
+              <span className="mono">{data.datasetExamples.sft} SFT</span> ·{" "}
+              <span className="mono">{data.datasetExamples.dpo} preference</span> examples.
+            </p>
+          </div>
+          <div className="row gap-8 wrap">
+            <DatasetButton repoId={repoId} format="sft" enabled={canDownload} label="SFT .jsonl" />
+            <DatasetButton repoId={repoId} format="dpo" enabled={canDownload} label="DPO .jsonl" />
+          </div>
+        </div>
+
+        {data.rejectReasons.length > 0 && (
+          <div>
+            <div className="t-sm text-secondary" style={{ fontWeight: 600, marginBottom: 8 }}>
+              Why drafts get rejected
+            </div>
+            <div className="row wrap gap-6">
+              {data.rejectReasons.map((r) => (
+                <span key={r.reason} className="tag">
+                  {r.reason} · {r.count}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Reveal>
+  );
+}
+
 export default function Insights() {
   const [data, setData] = useState<InsightsData>(DEMO_INSIGHTS);
   const [live, setLive] = useState(false);
+  const [learning, setLearning] = useState<LearningStats>(DEMO_LEARNING);
+  const [repoId, setRepoId] = useState<string | null>(null);
+  const [learnLive, setLearnLive] = useState(false);
 
   useEffect(() => {
     api
@@ -157,6 +341,23 @@ export default function Insights() {
           );
           setLive(true);
         }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api
+      .listRepos()
+      .then(({ repos }) => {
+        const r = repos?.[0];
+        if (!r?.id) return;
+        setRepoId(r.id);
+        return api.learning(r.id).then(({ learning: ls }) => {
+          if (ls && ls.total > 0) {
+            setLearning(ls);
+            setLearnLive(true);
+          }
+        });
       })
       .catch(() => {});
   }, []);
@@ -315,6 +516,9 @@ export default function Insights() {
               </div>
             </Reveal>
           </div>
+
+          {/* continuous learning loop */}
+          <LearningPanel data={learning} repoId={repoId} live={learnLive} />
 
           {/* benchmark */}
           <Reveal>

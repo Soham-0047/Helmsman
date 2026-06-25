@@ -44,6 +44,7 @@ casesRouter.post("/:id/approve", async (req, res) => {
       editedDraft: req.body?.editedDraft,
       actor: req.body?.actor,
       maintainerTokenEnc: req.body?.maintainerTokenEnc,
+      rating: req.body?.rating,
     });
     res.json({ ok: true, ...result });
   } catch (e) {
@@ -54,7 +55,7 @@ casesRouter.post("/:id/approve", async (req, res) => {
 // POST /api/cases/:id/reject { reason? }
 casesRouter.post("/:id/reject", async (req, res) => {
   try {
-    const c = await rejectCase(req.params.id, req.body?.actor, req.body?.reason);
+    const c = await rejectCase(req.params.id, req.body?.actor, req.body?.reason, req.body?.rating);
     res.json({ ok: true, case: c });
   } catch (e) {
     res.status(400).json({ ok: false, error: (e as Error).message });

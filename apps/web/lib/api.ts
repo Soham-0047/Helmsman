@@ -1,4 +1,5 @@
 import type { AuditEntry, CaseRecord } from "./types";
+import type { LearningStats } from "./insights";
 
 export const GATEWAY =
   process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:8080";
@@ -29,16 +30,22 @@ export const api = {
   getAudit: (id: string) => j<{ audit: AuditEntry[] }>(`/api/cases/${id}/audit`),
   streamUrl: (id: string) => `${GATEWAY}/api/cases/${id}/stream`,
 
-  approve: (id: string, body: { editedDraft?: string; action?: any } = {}) =>
+  approve: (id: string, body: { editedDraft?: string; action?: any; rating?: number } = {}) =>
     j<any>(`/api/cases/${id}/approve`, { method: "POST", body: JSON.stringify(body) }),
-  reject: (id: string, reason = "") =>
-    j<any>(`/api/cases/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  reject: (id: string, reason = "", rating?: number) =>
+    j<any>(`/api/cases/${id}/reject`, { method: "POST", body: JSON.stringify({ reason, rating }) }),
   saveDraft: (id: string, draft: string) =>
     j<any>(`/api/cases/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft }) }),
 
   listRepos: () => j<{ repos: any[] }>("/api/repos"),
   connectRepo: (body: { owner: string; name: string }) =>
     j<any>("/api/repos/connect", { method: "POST", body: JSON.stringify(body) }),
+
+  // Closed learning loop: metrics for the Learning view + dataset download URL.
+  learning: (repoId: string) =>
+    j<{ ok: boolean; learning: LearningStats; voice_profile: any }>(`/api/repos/${repoId}/learning`),
+  datasetUrl: (repoId: string, format: "sft" | "dpo") =>
+    `${GATEWAY}/api/repos/${repoId}/dataset?format=${format}`,
 
   demoFixtures: () => j<any>("/demo/fixtures"),
   runDemo: (fixtureId?: string, opts: { wait?: boolean } = {}) =>

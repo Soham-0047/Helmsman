@@ -497,4 +497,9 @@ export const DEFAULT_FLAGS: FlagDef[] = [
   { key: "helmsman.use_long_context_analyzer", strategy: "on" },
   { key: "helmsman.voice_self_check", strategy: "on" },
   { key: "helmsman.rpa_dry_run", strategy: "on" },
+  // Closed learning loop — ON by default so a missing/unparseable flags.json
+  // fails safe to "learning enabled" rather than silently going stateless.
+  { key: "helmsman.feedback_capture", strategy: "on" },
+  { key: "helmsman.voice_online_refresh", strategy: "on" },
+  { key: "helmsman.index_resolved_cases", strategy: "on" },
 ];

@@ -22,8 +22,10 @@ function loadLocalRegistry(): LocalRegistry {
       allowlist: f.allowlist,
       condition: f.condition,
     }));
-  } catch {
-    /* SDK supplies DEFAULT_FLAGS */
+  } catch (e) {
+    // Fall back to the SDK's DEFAULT_FLAGS, but say so — a silently-swallowed
+    // parse error here would disable the learning-loop flags with no trace.
+    console.warn(`[admin] flags.json unreadable, using DEFAULT_FLAGS: ${(e as Error).message}`);
   }
   return reg;
 }

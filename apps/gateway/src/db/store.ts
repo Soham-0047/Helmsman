@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { config } from "../config.ts";
-import type { AuditEntry, CaseRecord, IssueRef, RepoRef, Stage } from "../types.ts";
+import type { AuditEntry, CaseRecord, FeedbackEvent, IssueRef, RepoRef, Stage } from "../types.ts";
 
 export interface NewCaseInput {
   repo: RepoRef;
@@ -32,6 +32,14 @@ export interface Store {
 
   appendAudit(entry: Omit<AuditEntry, "id" | "occurred_at">): Promise<void>;
   listAudit(caseId: string): Promise<AuditEntry[]>;
+
+  // ---- Closed learning loop ----
+  /** Persist one maintainer decision (approve / edit / reject). */
+  recordFeedback(event: FeedbackEvent): Promise<void>;
+  /** Recent feedback rows for a repo, newest first — drives the Learning view + dataset export. */
+  listFeedback(repoId: string, limit?: number): Promise<FeedbackEvent[]>;
+  /** The maintainer's last N actually-shipped replies, newest first — the online voice corpus. */
+  listRecentApprovedDrafts(repoId: string, n?: number): Promise<string[]>;
 }
 
 const now = () => new Date().toISOString();
@@ -43,6 +51,8 @@ class MemoryStore implements Store {
   private cases = new Map<string, CaseRecord>();
   private audit: AuditEntry[] = [];
   private auditSeq = 1;
+  private feedback: FeedbackEvent[] = [];
+  private feedbackSeq = 1;
 
   async init() {}
   kind() {
@@ -126,6 +136,7 @@ class MemoryStore implements Store {
   async deleteCase(id: string) {
     this.cases.delete(id);
     this.audit = this.audit.filter((a) => a.case_id !== id);
+    this.feedback = this.feedback.filter((f) => f.case_id !== id);
   }
 
   async appendAudit(entry: Omit<AuditEntry, "id" | "occurred_at">) {
@@ -133,6 +144,28 @@ class MemoryStore implements Store {
   }
   async listAudit(caseId: string) {
     return this.audit.filter((a) => a.case_id === caseId);
+  }
+
+  async recordFeedback(event: FeedbackEvent) {
+    this.feedback.push({ ...event, id: this.feedbackSeq++, occurred_at: now() });
+  }
+  async listFeedback(repoId: string, limit = 1000) {
+    return this.feedback
+      .filter((f) => f.repo_id === repoId)
+      .sort((a, b) => ((a.occurred_at ?? "") < (b.occurred_at ?? "") ? 1 : -1))
+      .slice(0, limit);
+  }
+  async listRecentApprovedDrafts(repoId: string, n = 100) {
+    return this.feedback
+      .filter(
+        (f) =>
+          f.repo_id === repoId &&
+          (f.verdict === "approved" || f.verdict === "edited") &&
+          !!f.final_draft
+      )
+      .sort((a, b) => ((a.occurred_at ?? "") < (b.occurred_at ?? "") ? 1 : -1))
+      .slice(0, n)
+      .map((f) => f.final_draft as string);
   }
 }
 
@@ -224,15 +257,21 @@ class PgStore implements Store {
       completed_at: null,
     };
   }
+  // SELECT c.* (NOT *) joined to repos so repo_full_name is populated — the RPA
+  // executor splits caseRec.repo_full_name into owner/repo, so an empty string
+  // would make every live GitHub call target /repos//undefined/...
+  private static CASE_SELECT =
+    "SELECT c.*, r.owner AS r_owner, r.name AS r_name FROM cases c LEFT JOIN repos r ON r.id = c.repo_id";
+
   async getCase(id: string) {
-    const { rows } = await this.q(`SELECT * FROM cases WHERE id=$1`, [id]);
+    const { rows } = await this.q(`${PgStore.CASE_SELECT} WHERE c.id=$1`, [id]);
     return rows[0] ? this.rowToCase(rows[0]) : null;
   }
   async findCase(repoId: string, issueNumber: number) {
-    const { rows } = await this.q(`SELECT * FROM cases WHERE repo_id=$1 AND github_issue_number=$2`, [
-      repoId,
-      issueNumber,
-    ]);
+    const { rows } = await this.q(
+      `${PgStore.CASE_SELECT} WHERE c.repo_id=$1 AND c.github_issue_number=$2`,
+      [repoId, issueNumber]
+    );
     return rows[0] ? this.rowToCase(rows[0]) : null;
   }
   async listCases(filter: CaseFilter) {
@@ -240,16 +279,16 @@ class PgStore implements Store {
     const params: unknown[] = [];
     if (filter.repo_id) {
       params.push(filter.repo_id);
-      where.push(`repo_id=$${params.length}`);
+      where.push(`c.repo_id=$${params.length}`);
     }
     if (filter.stage) {
       params.push(filter.stage);
-      where.push(`current_stage=$${params.length}`);
+      where.push(`c.current_stage=$${params.length}`);
     }
     params.push(filter.limit ?? 100);
     const { rows } = await this.q(
-      `SELECT * FROM cases ${where.length ? "WHERE " + where.join(" AND ") : ""}
-       ORDER BY updated_at DESC LIMIT $${params.length}`,
+      `${PgStore.CASE_SELECT} ${where.length ? "WHERE " + where.join(" AND ") : ""}
+       ORDER BY c.updated_at DESC LIMIT $${params.length}`,
       params
     );
     return rows.map((r: any) => this.rowToCase(r));
@@ -284,7 +323,7 @@ class PgStore implements Store {
     return {
       id: r.id,
       repo_id: r.repo_id,
-      repo_full_name: "",
+      repo_full_name: r.r_owner && r.r_name ? `${r.r_owner}/${r.r_name}` : "",
       github_issue_number: r.github_issue_number,
       uipath_case_id: r.uipath_case_id,
       current_stage: r.current_stage as Stage,
@@ -313,6 +352,39 @@ class PgStore implements Store {
   async listAudit(caseId: string) {
     const { rows } = await this.q(`SELECT * FROM audit_log WHERE case_id=$1 ORDER BY occurred_at ASC`, [caseId]);
     return rows as AuditEntry[];
+  }
+
+  async recordFeedback(e: FeedbackEvent) {
+    await this.q(
+      `INSERT INTO feedback_events
+         (case_id, repo_id, verdict, issue_number, issue_title, issue_body, classification,
+          ai_draft, final_draft, edit_ratio, recommended_action, approved_action,
+          action_overridden, reject_reason, voice_match, voice_rating)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [
+        e.case_id, e.repo_id, e.verdict, e.issue_number ?? null, e.issue_title ?? null,
+        e.issue_body ?? null, e.classification ?? null, e.ai_draft ?? null, e.final_draft ?? null,
+        e.edit_ratio ?? null, e.recommended_action ?? null, e.approved_action ?? null,
+        e.action_overridden ?? false, e.reject_reason ?? null, e.voice_match ?? null, e.voice_rating ?? null,
+      ]
+    );
+  }
+  async listFeedback(repoId: string, limit = 1000) {
+    const { rows } = await this.q(
+      `SELECT * FROM feedback_events WHERE repo_id=$1 ORDER BY occurred_at DESC LIMIT $2`,
+      [repoId, limit]
+    );
+    return rows as FeedbackEvent[];
+  }
+  async listRecentApprovedDrafts(repoId: string, n = 100) {
+    const { rows } = await this.q(
+      `SELECT final_draft FROM feedback_events
+       WHERE repo_id=$1 AND verdict IN ('approved','edited')
+         AND final_draft IS NOT NULL AND final_draft <> ''
+       ORDER BY occurred_at DESC LIMIT $2`,
+      [repoId, n]
+    );
+    return rows.map((r: any) => r.final_draft as string);
   }
 }
 
